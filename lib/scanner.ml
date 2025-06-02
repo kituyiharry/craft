@@ -26,6 +26,37 @@ let isDigit c =
     c >= '0' && c <= '9'
 ;;
 
+let isAlpha c =
+    (c >= 'a' && c <= 'z') ||
+    (c >= 'A' && c <= 'Z') ||
+    c == '_';
+;;
+
+let isAlphaNumeric c =
+  isAlpha(c) || isDigit(c);
+;;
+
+let keyword k =
+    match k with
+    |"and"     -> AND
+    |"class"   -> CLASS
+    |"else"    -> ELSE
+    |"false"   -> FALSE
+    |"for"     -> FOR
+    |"fun"     -> FUN
+    |"if"      -> IF
+    |"nil"     -> NIL
+    |"or"      -> OR
+    |"print"   -> PRINT
+    |"return"  -> RETURN
+    |"super"   -> SUPER
+    |"this"    -> THIS
+    |"true"    -> TRUE
+    |"var"     -> VAR
+    |"while"   -> WHILE
+    |_         -> IDENTIFIER k
+;;
+
 let parse_token tok seqst = 
     match tok with
 
@@ -74,7 +105,7 @@ let parse_token tok seqst =
 
     (* single line strings *)
     | '"' ->  
-        let more, term, buf = perform (Collect (seqst, (fun ch -> ch != '"'))) in
+        let more, term, buf = perform (Collect (seqst, ((!=) '"'))) in
         if term then
             (* make sure to drop the terminating quote *)
             (Ok (STRING (Buffer.contents buf)), Seq.drop 1 more)
@@ -85,15 +116,14 @@ let parse_token tok seqst =
     |   c  -> 
         if isDigit(c) then
             let mbuf = Buffer.create 10 in
+            (* add current char and collect the rest *)
             let _ = Buffer.add_char mbuf c in
-            let more, _term, buf = perform (Collect (seqst, (fun ch -> isDigit ch))) in 
+            let more, _term, buf = perform (Collect (seqst, (isDigit))) in 
             let _ = Buffer.add_buffer mbuf buf in
-            let _ = Seq.iter (fun (c, _) -> Format.print_char c) more in
             (match next more '.' with
                 | (true,  seqst') -> 
-                    let more', _term, buf' = perform (Collect (seqst', (fun ch -> isDigit ch)))
+                    let more', _term, buf' = perform (Collect (seqst', (isDigit)))
                     in 
-                    
                     if Buffer.length buf' = 0 then
                         (Error ("Ambigous: Number cannot terminate with period e.g <num>.<num> or <num>.(function)"), more')
                     else
@@ -108,7 +138,6 @@ let parse_token tok seqst =
                             (Error (Format.sprintf "Invalid number: %s (%s)" cont s), more')
                         )
 
-
                 | (false, seqst') -> 
                     let cont = (Buffer.contents mbuf) in
                     try
@@ -118,6 +147,12 @@ let parse_token tok seqst =
                         | Failure s -> 
                         (Error (Format.sprintf "Invalid number: %s (%s)" cont s), seqst')
             )
+        else if isAlpha c then 
+            let mbuf = Buffer.create 10 in
+            let _ = Buffer.add_char mbuf c in
+            let more, _term, buf = perform (Collect (seqst, (isAlphaNumeric))) in 
+            let _ = Buffer.add_buffer mbuf buf in
+            (Ok (keyword (Buffer.contents mbuf)), more) 
         else
             (Error (Format.sprintf "unhandled token: %c" c), seqst) 
 ;;

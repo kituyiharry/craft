@@ -21,7 +21,7 @@ type tokentype =
     | LESS
     | LESS_EQUAL
     (* Literals. *)
-    | IDENTIFIER 
+    | IDENTIFIER of string
     | STRING of string 
     | NUMBER of float
     (* Keywords.*)

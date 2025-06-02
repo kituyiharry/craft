@@ -1,8 +1,11 @@
-// this is a comment
+// this is a comment that will be skipped
 (){}// comm
 !*+-/=<> <= == // operators
 (*"Lorem ipsum dolor sit amet, consetetur sadipscing elitr"*)
 12.12
 12.1999
 1
-10001 = 12 + 112 * 999
+
+while x = 100 { 
+    let g = 10001 = 12 + 112 * 999
+}
