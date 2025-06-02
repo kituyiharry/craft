@@ -5,7 +5,7 @@
 let fopen filename = 
     let ic = open_in filename in 
     (* memoize to maintain persistence *)
-    Seq.of_dispenser (fun () -> In_channel.input_char ic)
+    Seq.of_dispenser (fun () -> In_channel.input_line ic)
 ;;
 
 let gets () = 

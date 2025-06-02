@@ -22,8 +22,8 @@ type tokentype =
     | LESS_EQUAL
     (* Literals. *)
     | IDENTIFIER 
-    | STRING 
-    | NUMBER
+    | STRING of string 
+    | NUMBER of float
     (* Keywords.*)
     | AND 
     | CLASS 
@@ -42,18 +42,18 @@ type tokentype =
     | VAR 
     | WHILE
     | EOF
+    (* Delim *)
+    | NONPERT
+    | MULTILINECOMMENT
 [@@deriving show];;
 
 type token = {
       ttype  :  tokentype
-    (*; lexeme :  bytes*)
-    ; literal:  [`Empty | `Obj of string]
-    ; line   :  int
     ; col    :  int
 }[@@deriving show];;
 
-let mktoken ttyp lit line col = 
-    { ttype=ttyp; literal=lit; line; col }
+let mktoken ttyp col = 
+    { ttype=ttyp; col }
 ;;
 
 

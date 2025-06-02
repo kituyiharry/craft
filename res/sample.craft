@@ -1,4 +1,8 @@
- // this is a comment
-(( )){} // grouping stuff
+// this is a comment
+(){}// comm
 !*+-/=<> <= == // operators
-"Lorem ipsum dolor sit amet, consetetur sadipscing elitr"
+(*"Lorem ipsum dolor sit amet, consetetur sadipscing elitr"*)
+12.12
+12.1999
+1
+10001 = 12 + 112 * 999

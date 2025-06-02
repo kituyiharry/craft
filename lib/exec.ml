@@ -1,7 +1,6 @@
-
-let run (interp: char Seq.t) = 
+let run (interp: string Seq.t) = 
     interp 
-    |> Seq.iter (Format.print_char)
+    |> Scanner.scan_lines
 ;;
 
 let error line col message = 
