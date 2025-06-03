@@ -5,7 +5,16 @@
 12.12
 12.1999
 1
+fun x =
+    while x = 100 { 
+        let g = 10001 = 12 + 112 * 999
+    }
+/** This is a multiline comment */
+/** 
+ * This is a malformed multiline 
+ * too
+ */ fun g = 
+    {
+        x + x * 1 mod 2
+    }
 
-while x = 100 { 
-    let g = 10001 = 12 + 112 * 999
-}

@@ -11,8 +11,27 @@ type _ Effect.t +=
     | SkipNums: chars * int  -> chars Effect.t (* Skip n chars *)
     | Collect : chars * (char -> bool) -> (chars * bool * Buffer.t) Effect.t (* Collect until we find char *)
     (* Effects on multiple lines *)
-    (*| MultilineComment*)
-    (*| Advance of  ((Buffer.t * tokentype) * ((char * int) -> bool))*)
+    | SkipAcross: lines * ((string * int) -> (bool * chars)) -> (bool * lines * chars) Effect.t
+;;
+
+(* A variation of Seq.drop_while but it drops until 2 conditions in a row are
+   satisfied *)
+let rec drop_til_follows p1 p2 xs =
+    match xs() with
+    | Seq.Nil ->
+        (false, Seq.Nil)
+    | Seq.Cons (x, xs) ->
+        if p1 x then 
+            drop_til_follows p1 p2 xs 
+        else 
+            match xs () with
+            | Seq.Nil -> 
+                (false, Seq.Nil) 
+            | Seq.Cons (x', xs') as node' -> 
+                if p2 x' then
+                    drop_til_follows p1 p2 xs' 
+                else
+                    (true, node')
 ;;
 
 (* match next token *)
@@ -29,7 +48,7 @@ let isDigit c =
 let isAlpha c =
     (c >= 'a' && c <= 'z') ||
     (c >= 'A' && c <= 'Z') ||
-    c == '_';
+    (c == '_');
 ;;
 
 let isAlphaNumeric c =
@@ -57,60 +76,81 @@ let keyword k =
     |_         -> IDENTIFIER k
 ;;
 
-let parse_token tok seqst = 
+let parse_token tok lseqst cseqst = 
     match tok with
 
     (* simple *)
-    |  '(' -> (Ok (LEFT_PAREN ), seqst)
-    |  ')' -> (Ok (RIGHT_PAREN), seqst)
-    |  '{' -> (Ok (LEFT_BRACE ), seqst)
-    |  '}' -> (Ok (RIGHT_BRACE), seqst)
-    |  ',' -> (Ok (COMMA      ), seqst)
-    |  '.' -> (Ok (DOT        ), seqst)
-    |  '-' -> (Ok (MINUS      ), seqst)
-    |  '+' -> (Ok (PLUS       ), seqst)
-    |  ';' -> (Ok (SEMICOLON  ), seqst)
-    |  '*' -> (Ok (STAR       ), seqst)
+    |  '(' -> (Ok (LEFT_PAREN ), lseqst, cseqst)
+    |  ')' -> (Ok (RIGHT_PAREN), lseqst, cseqst)
+    |  '{' -> (Ok (LEFT_BRACE ), lseqst, cseqst)
+    |  '}' -> (Ok (RIGHT_BRACE), lseqst, cseqst)
+    |  ',' -> (Ok (COMMA      ), lseqst, cseqst)
+    |  '.' -> (Ok (DOT        ), lseqst, cseqst)
+    |  '-' -> (Ok (MINUS      ), lseqst, cseqst)
+    |  '+' -> (Ok (PLUS       ), lseqst, cseqst)
+    |  ';' -> (Ok (SEMICOLON  ), lseqst, cseqst)
+    |  '*' -> (Ok (STAR       ), lseqst, cseqst)
 
     (* grouped *)
-    |  '!' -> (match next seqst '=' with
-            | (true,  seqst') -> (Ok (BANG_EQUAL), seqst')
-            | (false, seqst') -> (Ok (BANG), seqst')
+    |  '!' -> (match next cseqst '=' with
+            | (true,  seqst') -> (Ok (BANG_EQUAL), lseqst, seqst')
+            | (false, seqst') -> (Ok (BANG), lseqst, seqst')
         )
-    | '=' -> (match next seqst '=' with
-            | (true,  seqst') -> (Ok (EQUAL_EQUAL), seqst')
-            | (false, seqst') -> (Ok (EQUAL), seqst')
+    | '=' -> (match next cseqst '=' with
+            | (true,  seqst') -> (Ok (EQUAL_EQUAL), lseqst, seqst')
+            | (false, seqst') -> (Ok (EQUAL),  lseqst, seqst')
         )
-    | '<' -> (match next seqst '=' with
-            | (true,  seqst') -> (Ok (LESS_EQUAL), seqst')
-            | (false, seqst') -> (Ok (LESS), seqst')
+    | '<' -> (match next cseqst '=' with
+            | (true,  seqst') -> (Ok (LESS_EQUAL), lseqst, seqst')
+            | (false, seqst') -> (Ok (LESS),  lseqst, seqst')
         )
-    | '>' -> (match next seqst '=' with
-            | (true,  seqst') -> (Ok (GREATER_EQUAL), seqst')
-            | (false, seqst') -> (Ok (GREATER), seqst')
+    | '>' -> (match next cseqst '=' with
+            | (true,  seqst') -> (Ok (GREATER_EQUAL), lseqst, seqst')
+            | (false, seqst') -> (Ok (GREATER), lseqst, seqst')
         )
 
     (* ignored *)
-    | '/' -> (match next seqst '/' with
+    | '/' -> (match next cseqst '/' with
             | (true, seqst') ->
                 (* or just drop the whole sequence as this is a comment *)
-                (Ok NONPERT, perform (SkipLine seqst'))
+                (Ok NONPERT, lseqst, perform (SkipLine seqst'))
             | (false, seqst') -> 
-                (Ok SLASH, seqst')
+                (match next cseqst '*' with
+                    | (true, seqst'') ->
+                        let notstar  = Fun.compose ((!=) '*') fst in
+                        let notslash = Fun.compose ((!=) '/') fst in
+                        let found, node = drop_til_follows notstar notslash seqst'' in
+                        if found then
+                            (Ok NONPERT, lseqst, Seq.drop 1 (fun () -> node))
+                        else
+                            let (x, y, z) = perform (SkipAcross (
+                                lseqst, 
+                                (fun (l,_)-> 
+                                    let x, y = drop_til_follows notstar notslash (Seq.zip (String.to_seq l) (Seq.ints 0))
+                                    in x, (fun () -> y)
+                                )
+                            )) in
+                            if x then
+                                (Ok NONPERT, y, Seq.drop 1 z)
+                            else
+                                (Error "Unterminated multiline comment!!", lseqst, seqst')
+                    | _ ->
+                        (Ok SLASH, lseqst, seqst')
+                )
         )
-    | ' '  -> (Ok NONPERT, perform (SkipNums (seqst, 0)))
-    | '\t' -> (Ok NONPERT, perform (SkipNums (seqst, 0)))
-    | '\r' -> (Ok NONPERT, perform (SkipNums (seqst, 0)))
-    | '\n' -> (Ok NONPERT, perform (SkipNums (seqst, 0)))
+    | ' '  -> (Ok NONPERT, lseqst, perform (SkipNums (cseqst, 0)))
+    | '\t' -> (Ok NONPERT, lseqst, perform (SkipNums (cseqst, 0)))
+    | '\r' -> (Ok NONPERT, lseqst, perform (SkipNums (cseqst, 0)))
+    | '\n' -> (Ok NONPERT, lseqst, perform (SkipNums (cseqst, 0)))
 
     (* single line strings *)
     | '"' ->  
-        let more, term, buf = perform (Collect (seqst, ((!=) '"'))) in
+        let more, term, buf = perform (Collect (cseqst, ((!=) '"'))) in
         if term then
             (* make sure to drop the terminating quote *)
-            (Ok (STRING (Buffer.contents buf)), Seq.drop 1 more)
+            (Ok (STRING (Buffer.contents buf)), lseqst, Seq.drop 1 more)
         else
-            (Error "Unterminated string!", seqst)
+            (Error "Unterminated string!", lseqst,cseqst)
 
     (* unmatched - halt parser *)
     |   c  -> 
@@ -118,99 +158,121 @@ let parse_token tok seqst =
             let mbuf = Buffer.create 10 in
             (* add current char and collect the rest *)
             let _ = Buffer.add_char mbuf c in
-            let more, _term, buf = perform (Collect (seqst, (isDigit))) in 
+            let more, _term, buf = perform (Collect (cseqst, (isDigit))) in 
             let _ = Buffer.add_buffer mbuf buf in
             (match next more '.' with
                 | (true,  seqst') -> 
                     let more', _term, buf' = perform (Collect (seqst', (isDigit)))
                     in 
                     if Buffer.length buf' = 0 then
-                        (Error ("Ambigous: Number cannot terminate with period e.g <num>.<num> or <num>.(function)"), more')
+                        (Error ("Ambigous: Number cannot terminate with period
+                        e.g <num>.<num> or <num>.(function)"), lseqst, more')
                     else
                         let _ = Buffer.add_char mbuf '.' in
                         let _ = Buffer.add_buffer mbuf buf' in
                         let cont = Buffer.contents mbuf in
                         (try
                             let flt = Float.of_string cont in
-                            (Ok (NUMBER flt), more') 
+                            (Ok (NUMBER flt), lseqst, more') 
                         with
                             | Failure s -> 
-                            (Error (Format.sprintf "Invalid number: %s (%s)" cont s), more')
+                            (Error (Format.sprintf "Invalid number: %s (%s)"
+                                cont s), lseqst, more')
                         )
 
                 | (false, seqst') -> 
                     let cont = (Buffer.contents mbuf) in
                     try
                         let flt = Float.of_string cont in
-                        (Ok (NUMBER flt), seqst') 
+                        (Ok (NUMBER flt), lseqst, seqst') 
                     with
                         | Failure s -> 
-                        (Error (Format.sprintf "Invalid number: %s (%s)" cont s), seqst')
+                        (Error (Format.sprintf "Invalid number: %s (%s)" cont s), lseqst, seqst')
             )
         else if isAlpha c then 
             let mbuf = Buffer.create 10 in
             let _ = Buffer.add_char mbuf c in
-            let more, _term, buf = perform (Collect (seqst, (isAlphaNumeric))) in 
+            let more, _term, buf = perform (Collect (cseqst, (isAlphaNumeric))) in 
             let _ = Buffer.add_buffer mbuf buf in
-            (Ok (keyword (Buffer.contents mbuf)), more) 
+            (Ok (keyword (Buffer.contents mbuf)), lseqst, more) 
         else
-            (Error (Format.sprintf "unhandled token: %c" c), seqst) 
+            (Error (Format.sprintf "unhandled token: %c" c), lseqst, cseqst) 
 ;;
 
-let scan_tokens cursor charseq = 
+let scan_tokens lines charseq = 
     (* zip with col numbers *)
     let cseq = (Seq.zip charseq (Seq.ints 0)) in
-    let rec chars cseq state =
+    let rec chars lines cseq state =
         match Seq.uncons cseq with
         | None -> 
-            cursor, Ok (List.rev state)
+            Ok (List.rev state)
         | Some ((tok, col), more) ->
             try 
-                let (lexeme', more') = parse_token tok more in
+                let (lexeme', lines', more') = parse_token tok lines more in
                 match lexeme' with
                 | Ok NONPERT ->
-                    chars (more') (state)
+                    chars lines' (more') (state)
+                | Ok MULTILINECOMMENT ->
+                    chars lines' (more') (state)
                 | Ok lexeme ->
-                    chars (more') ((Token.mktoken lexeme col) :: state)
+                    chars lines' (more') ((Token.mktoken lexeme col) :: state)
                 | Error _ as e -> 
-                    cursor, e
+                    e
             with
                 (* single line comment has the effect of ignoring until a newline is reached *)
                 | effect (SkipLine _more'), k ->
-                continue k (Seq.empty)
+                    continue k (Seq.empty)
                 | effect (SkipNums (more', num)), k -> 
-                continue k (Seq.drop num more')
+                    continue k (Seq.drop num more')
                 | effect (Collect (more', predc)), k -> 
-                let buf = Buffer.create 40 in
-                let term = ref false in
-                let _ = Seq.iter (Buffer.add_char buf) 
-                    @@ Seq.map (fst) 
-                    @@ Seq.take_while (fun (ch,_) -> 
-                        let _ = term := predc ch in 
-                        !term
-                    ) more' in
-                let size = Buffer.length buf in
-                let rems = Seq.drop size more' in
-                continue k (rems, not !term, buf)
-    in chars cseq []
+                    (* todo: delay buffering util we find the actual value *)
+                    let buf = Buffer.create 40 in
+                    let term = ref false in
+                    let _ = Seq.iter (Buffer.add_char buf) 
+                        @@ Seq.map (fst) 
+                        @@ Seq.take_while (fun (ch,_) -> 
+                            let _ = term := predc ch in 
+                            !term
+                        ) more' in
+                    let size = Buffer.length buf in
+                    let rems = Seq.drop size more' in
+                    continue k (rems, not !term, buf)
+    in chars lines cseq []
 ;;
 
 (* consume chars to tokens -> processes a line *)
 let scan_lines lineseq = 
-    (* zip with line numbers *)
-    let lseq = (Seq.zip lineseq (Seq.ints 0)) in 
+    (* zip with line numbers - start count from 1 *)
+    let lseq = (Seq.zip lineseq (Seq.ints 1)) in 
     let rec lines lseq state = 
         match Seq.uncons lseq with
         | Some ((line, num), more) -> 
-            let cursor', lexemes = scan_tokens more (line |> String.to_seq) in
-            (match lexemes with
-                | Ok lexemes' -> 
-                    let state' = Ok (num, lexemes') :: state in
-                    lines cursor' state'
-                | Error e -> 
-                    let state' = Error (num, e) :: state in
-                    lines cursor' state'
-            )
+            (try 
+                let lexemes = scan_tokens more (line |> String.to_seq) in
+                (match lexemes with
+                    | Ok lexemes' -> 
+                        let state' = Ok (num, lexemes') :: state in
+                        lines more state'
+                    | Error e -> 
+                        let state' = Error (num, e) :: state in
+                        lines more state'
+                )
+            with 
+                | effect (SkipAcross (more', predc)), k -> 
+                    let rec drop_to x = 
+                        (match Seq.uncons x with 
+                            | Some (l, m) -> 
+                                let y, z = predc l in
+                                if y then
+                                    y, z, m
+                                else
+                                    drop_to m 
+                            | None -> 
+                                false, Seq.empty, Seq.empty
+                        )
+                    in 
+                    let (y, z, m) = drop_to more' in
+                    continue k (y, m, z))
         | None -> 
             List.rev state 
     in lines lseq []
