@@ -14,6 +14,10 @@ type _ Effect.t +=
     | SkipAcross: lines * ((string * int) -> (bool * chars)) -> (bool * lines * chars) Effect.t
 ;;
 
+let error line col message = 
+    Format.sprintf "[line: %d, col: %d] error: %s" line col message 
+;;
+
 (* A variation of Seq.drop_while but it drops until 2 conditions in a row are
    satisfied *)
 let rec drop_til_follows p1 p2 xs =
@@ -214,8 +218,8 @@ let scan_tokens lines charseq =
                     chars lines' (more') (state)
                 | Ok lexeme ->
                     chars lines' (more') ((Token.mktoken lexeme col) :: state)
-                | Error _ as e -> 
-                    e
+                | Error e -> 
+                    Error (e, col)
             with
                 (* single line comment has the effect of ignoring until a newline is reached *)
                 | effect (SkipLine _more'), k ->
@@ -250,11 +254,10 @@ let scan_lines lineseq =
                 let lexemes = scan_tokens more (line |> String.to_seq) in
                 (match lexemes with
                     | Ok lexemes' -> 
-                        let state' = Ok (num, lexemes') :: state in
+                        let state' = (num, lexemes') :: state in
                         lines more state'
-                    | Error e -> 
-                        let state' = Error (num, e) :: state in
-                        lines more state'
+                    | Error (e, c) -> 
+                        failwith (error num c e)
                 )
             with 
                 | effect (SkipAcross (more', predc)), k -> 
