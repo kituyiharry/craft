@@ -2,6 +2,7 @@ let runfile fname =
     let _ = Format.pp_print_newline Format.std_formatter () in
     Craft.Io.fopen fname 
     |> Craft.Exec.run
+    |> fst (* use snd to view errors *)
     |> List.iter (
         fun (num, tok) -> 
         let _ = Format.pp_print_string Format.std_formatter (Format.sprintf "Line %d: \n" num)

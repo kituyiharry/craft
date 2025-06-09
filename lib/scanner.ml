@@ -206,20 +206,20 @@ let parse_token tok lseqst cseqst =
 let scan_tokens lines charseq = 
     (* zip with col numbers *)
     let cseq = (Seq.zip charseq (Seq.ints 0)) in
-    let rec chars lines cseq state =
+    let rec chars lines cseq state errs =
         match Seq.uncons cseq with
         | None -> 
-            Ok (List.rev state)
+            (List.rev state, List.rev errs)
         | Some ((tok, col), more) ->
             try 
                 let (lexeme', lines', more') = parse_token tok lines more in
                 match lexeme' with
                 | Ok NONPERT ->
-                    chars lines' (more') (state)
+                    chars lines' (more') (state) errs
                 | Ok lexeme ->
-                    chars lines' (more') ((Token.mktoken lexeme col) :: state)
+                    chars lines' (more') ((Token.mktoken lexeme col) :: state) errs
                 | Error e -> 
-                    Error (e, col)
+                    chars lines' (more') (state) ((Error (e, col)) :: errs)
             with
                 (* single line comment has the effect of ignoring until a newline is reached *)
                 | effect (SkipLine _more'), k ->
@@ -240,25 +240,23 @@ let scan_tokens lines charseq =
                     let size = Buffer.length buf in
                     let rems = Seq.drop size more' in
                     continue k (rems, not !term, buf)
-    in chars lines cseq []
+    in chars lines cseq [] []
 ;;
 
 (* consume chars to tokens -> processes a line *)
 let scan_lines lineseq = 
     (* zip with line numbers - start count from 1 *)
     let lseq = (Seq.zip lineseq (Seq.ints 1)) in 
-    let rec lines lseq state = 
+    let rec lines lseq state errs = 
         match Seq.uncons lseq with
         | Some ((line, num), more) -> 
             (try 
-                let lexemes = scan_tokens more (line |> String.to_seq) in
-                (match lexemes with
-                    | Ok lexemes' -> 
-                        let state' = (num, lexemes') :: state in
-                        lines more state'
-                    | Error (e, c) -> 
-                        failwith (error num c e)
-                )
+                let (lexemes', tokerrs) = scan_tokens more (line |> String.to_seq) in
+                let state' = (num, lexemes') :: state in
+                let errs'  = (if List.is_empty tokerrs then errs else 
+                    (line, tokerrs) :: errs
+                ) in 
+                lines more state' errs'
             with 
                 | effect (SkipAcross (more', predc)), k -> 
                     let rec drop_to x = 
@@ -276,7 +274,7 @@ let scan_lines lineseq =
                     let (y, z, m) = drop_to more' in
                     continue k (y, m, z))
         | None -> 
-            List.rev state 
-    in lines lseq []
+            (List.rev state, List.rev errs)
+    in lines lseq [] []
 ;;
 
