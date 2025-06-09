@@ -1,20 +1,20 @@
-type tokentype = 
+type tokentype =
     (* Single-character tokens. *)
     | LEFT_PAREN
-    | RIGHT_PAREN 
+    | RIGHT_PAREN
     | LEFT_BRACE
     | RIGHT_BRACE
-    | COMMA 
-    | DOT 
-    | MINUS 
-    | PLUS 
-    | SEMICOLON 
-    | SLASH 
+    | COMMA
+    | DOT
+    | MINUS
+    | PLUS
+    | SEMICOLON
+    | SLASH
     | STAR
     (* One or two character tokens. *)
     | BANG
     | BANG_EQUAL
-    | EQUAL 
+    | EQUAL
     | EQUAL_EQUAL
     | GREATER
     | GREATER_EQUAL
@@ -22,29 +22,28 @@ type tokentype =
     | LESS_EQUAL
     (* Literals. *)
     | IDENTIFIER of string
-    | STRING of string 
+    | STRING of string
     | NUMBER of float
     (* Keywords.*)
-    | AND 
-    | CLASS 
-    | ELSE 
-    | FALSE 
-    | FUN 
-    | FOR 
-    | IF 
-    | NIL 
+    | AND
+    | CLASS
+    | ELSE
+    | FALSE
+    | FUN
+    | FOR
+    | IF
+    | NIL
     | OR
-    | PRINT 
-    | RETURN 
-    | SUPER 
-    | THIS 
-    | TRUE 
-    | VAR 
+    | PRINT
+    | RETURN
+    | SUPER
+    | THIS
+    | TRUE
+    | VAR
     | WHILE
     | EOF
     (* Delim *)
     | NONPERT
-    | MULTILINECOMMENT
 [@@deriving show];;
 
 type token = {
@@ -52,8 +51,6 @@ type token = {
     ; col    :  int
 }[@@deriving show];;
 
-let mktoken ttyp col = 
+let mktoken ttyp col =
     { ttype=ttyp; col }
 ;;
-
-

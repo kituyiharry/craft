@@ -8,7 +8,7 @@ type chars = (char   * int) Seq.t;;
 type _ Effect.t += 
     (* Effects on a single line *)
     | SkipLine: chars -> chars Effect.t        (* Skip the whole line *)
-    | SkipNums: chars * int  -> chars Effect.t (* Skip n chars *)
+    | SkipChars: chars * int  -> chars Effect.t (* Skip n chars *)
     | Collect : chars * (char -> bool) -> (chars * bool * Buffer.t) Effect.t (* Collect until we find char *)
     (* Effects on multiple lines *)
     | SkipAcross: lines * ((string * int) -> (bool * chars)) -> (bool * lines * chars) Effect.t
@@ -138,10 +138,10 @@ let parse_token tok lseqst cseqst =
                         (Ok SLASH, lseqst, seqst')
                 )
         )
-    | ' '  -> (Ok NONPERT, lseqst, perform (SkipNums (cseqst, 0)))
-    | '\t' -> (Ok NONPERT, lseqst, perform (SkipNums (cseqst, 0)))
-    | '\r' -> (Ok NONPERT, lseqst, perform (SkipNums (cseqst, 0)))
-    | '\n' -> (Ok NONPERT, lseqst, perform (SkipNums (cseqst, 0)))
+    | ' '  -> (Ok NONPERT, lseqst, perform (SkipChars (cseqst, 0)))
+    | '\t' -> (Ok NONPERT, lseqst, perform (SkipChars (cseqst, 0)))
+    | '\r' -> (Ok NONPERT, lseqst, perform (SkipChars (cseqst, 0)))
+    | '\n' -> (Ok NONPERT, lseqst, perform (SkipChars (cseqst, 0)))
 
     (* single line strings *)
     | '"' ->  
@@ -165,7 +165,7 @@ let parse_token tok lseqst cseqst =
                     let more', _term, buf' = perform (Collect (seqst', (isDigit)))
                     in 
                     if Buffer.length buf' = 0 then
-                        (Error ("Ambigous: Number cannot terminate with period
+                        (Error ("Ambigous use of period: Number cannot terminate with period
                         e.g <num>.<num> or <num>.(function)"), lseqst, more')
                     else
                         let _ = Buffer.add_char mbuf '.' in
@@ -212,8 +212,6 @@ let scan_tokens lines charseq =
                 match lexeme' with
                 | Ok NONPERT ->
                     chars lines' (more') (state)
-                | Ok MULTILINECOMMENT ->
-                    chars lines' (more') (state)
                 | Ok lexeme ->
                     chars lines' (more') ((Token.mktoken lexeme col) :: state)
                 | Error _ as e -> 
@@ -222,13 +220,14 @@ let scan_tokens lines charseq =
                 (* single line comment has the effect of ignoring until a newline is reached *)
                 | effect (SkipLine _more'), k ->
                     continue k (Seq.empty)
-                | effect (SkipNums (more', num)), k -> 
+                | effect (SkipChars (more', num)), k -> 
                     continue k (Seq.drop num more')
                 | effect (Collect (more', predc)), k -> 
                     (* todo: delay buffering util we find the actual value *)
                     let buf = Buffer.create 40 in
                     let term = ref false in
-                    let _ = Seq.iter (Buffer.add_char buf) 
+                    let _ = 
+                        Seq.iter (Buffer.add_char buf) 
                         @@ Seq.map (fst) 
                         @@ Seq.take_while (fun (ch,_) -> 
                             let _ = term := predc ch in 

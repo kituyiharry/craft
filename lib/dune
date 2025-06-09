@@ -1,4 +1,4 @@
 (library
  (name craft)
  (preprocess (pps ppx_deriving.show ppx_deriving.ord))
- (modules io exec token scanner transform))
+ (modules io exec token scanner expr))
