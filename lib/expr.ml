@@ -37,7 +37,8 @@ and expr =
     | Operator of equality
     | Unary    of (unary * expr)
     | Binary   of (expr * expr * expr)
-    | Grouping of expr list
+    | Grouping of expr
+    | Unhandled of tokentype
 
 [@@deriving show];;
 
@@ -45,7 +46,6 @@ let rec _expression tseq =
     _equality tseq 
 
 and _equality tseq' = 
-
     let (l_expr, tseq'') = _comp tseq' in 
 
     let check ts = 
@@ -54,15 +54,15 @@ and _equality tseq' =
             (match p with
                 | BANG_EQUAL  -> 
                     let r_expr, _ts' = _comp r in
-                    Binary (l_expr, (Operator NotEq), r_expr)
+                    (Binary (l_expr, (Operator NotEq), r_expr), _ts')
                 | EQUAL_EQUAL -> 
                     let r_expr, _ts' = _comp r in
-                    Binary (l_expr, (Operator Eq), r_expr)
+                    (Binary (l_expr, (Operator Eq), r_expr), _ts')
                 | _ -> 
-                    l_expr
+                    (l_expr, ts)
             )
         | None ->
-            l_expr
+            (l_expr, ts)
     in check tseq'' 
 
 and _comp compseq  = 
@@ -164,10 +164,15 @@ and primary pseq =
             | NUMBER f   -> (Literal (Number f)  , r)
             | STRING s   -> (Literal (String s)  , r)
             | LEFT_PAREN ->
-                (* todo!! *)
-                (Literal Nil, r)
-            | _ -> 
-                (Literal Nil, r)
+                let expr', r' = _expression r in
+                (match Seq.uncons r' with
+                    | Some (RIGHT_PAREN, r'') -> 
+                        (Grouping expr', r'')
+                    |_ -> 
+                        failwith "Error - unclosed quotes!"
+                )
+            | t -> 
+                (Unhandled t, r)
         )
     | None ->
         (Literal Nil, pseq)
