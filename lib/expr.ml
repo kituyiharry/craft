@@ -38,7 +38,7 @@ and expr =
     | Unary    of (unary * expr)
     | Binary   of (expr * expr * expr)
     | Grouping of expr
-    | Unhandled of tokentype
+    | Unhandled of (tokentype * int * int) (* token line col *)
 
 [@@deriving show];;
 
@@ -50,7 +50,7 @@ and _equality tseq' =
 
     let check ts = 
         match Seq.uncons ts with
-        | Some (p, r) ->
+        | Some ((p, _l, _c), r) ->
             (match p with
                 | BANG_EQUAL  -> 
                     let r_expr, _ts' = _comp r in
@@ -70,7 +70,7 @@ and _comp compseq  =
 
     let check ts = 
         match Seq.uncons ts with
-        | Some (p, r) ->
+        | Some ((p, _l, _c), r) ->
             (match p with
                 | GREATER  -> 
                     let r_expr, _ts' = _term r in
@@ -96,7 +96,7 @@ and _term termseq =
 
     let check ts = 
         match Seq.uncons ts with
-        | Some (p, r) ->
+        | Some ((p, _l, _c), r) ->
             (match p with
                 | GREATER  -> 
                     let r_expr, _ts' = _term r in
@@ -122,7 +122,7 @@ and _factor facseq =
 
     let check ts = 
         match Seq.uncons ts with
-        | Some (p, r) ->
+        | Some ((p, _l, _c), r) ->
             (match p with
                 | SLASH  -> 
                     let r_expr, _ts' = _term r in
@@ -140,7 +140,7 @@ and _factor facseq =
 and _unary useq = 
 
     (match Seq.uncons useq with
-    | Some (p, r) ->
+    | Some ((p, _l, _c), r) ->
         (match p with
             | BANG  -> 
                 let r_expr, _ts' = _unary r in
@@ -157,7 +157,7 @@ and _unary useq =
 
 and primary pseq = 
     match Seq.uncons pseq with
-    | Some (p, r) ->
+    | Some ((p, l', c'), r) ->
         (match p with
             | FALSE      -> (Literal (Bool false), r)
             | TRUE       -> (Literal (Bool true) , r)
@@ -166,13 +166,15 @@ and primary pseq =
             | LEFT_PAREN ->
                 let expr', r' = _expression r in
                 (match Seq.uncons r' with
-                    | Some (RIGHT_PAREN, r'') -> 
+                    | Some ((RIGHT_PAREN, _l, _c), r'') -> 
                         (Grouping expr', r'')
-                    |_ -> 
-                        failwith "Error - unclosed quotes!"
+                    | Some ((p, l, c), _) -> 
+                        failwith (Format.sprintf "Error - unmatched quote expected at line %d col %d! found: %s" l c (show_tokentype p))
+                    | _ -> 
+                        failwith (Format.sprintf "Error - unmatched quote line %d col %d! found: %s" l' c' (show_tokentype p))
                 )
             | t -> 
-                (Unhandled t, r)
+                (Unhandled (t, l', c'), r)
         )
     | None ->
         (Literal Nil, pseq)
