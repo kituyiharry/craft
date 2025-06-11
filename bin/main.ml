@@ -13,8 +13,8 @@ let runfile fname =
             in toks
         )
     |> Craft.Exec.normalize
-    |> Craft.Expr.parse
-    |> Craft.Expr.show_expr
+    |> Craft.Ast.parse
+    |> Craft.Ast.show_expr
     |> function s -> 
         let _ = Format.print_newline () in
         Format.print_string s
