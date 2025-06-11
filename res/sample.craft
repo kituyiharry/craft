@@ -1,20 +1,17 @@
 // this is a comment that will be skipped
-(){}// comm
-!*+-/=<> <= == // operators
-(*"Lorem ipsum dolor sit amet, consetetur sadipscing elitr"*)
-12.12
-12.1999
-1
-fun x =
-    while x = 100 { 
-        let g = 10001 = 12 + 112 * 999
-    }
+// comm
+// !*+-/=<> <= == // operators
+// (*"Lorem ipsum dolor sit amet, consetetur sadipscing elitr"*)
+// fun x =
+//     while x = 100 { 
+//         let g = 10001 = 12 + 112 * 999
+//     }
+// ;
 /** This is a multiline comment */
-/** 
- * This is a malformed multiline 
- * too
- */ fun g = 
-    {
-        x + x * 1 mod 2
-    }
-
+// fun g = 
+// {
+//     x + x * 1 mod 2
+// };
+( 500 - 100 * 11 ) / 12;
+( -10 );
+(9000 - 1222 * (-900) + 11.34);

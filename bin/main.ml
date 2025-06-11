@@ -1,25 +1,35 @@
 let runfile fname = 
-    let _ = Format.pp_print_newline Format.std_formatter () in
+    let _ = Format.print_newline () in
+    let _ = Format.print_newline () in
     Craft.Io.fopen fname 
     |> Craft.Exec.run
     |> fst (* use snd to view errors *)
-    |> List.iter (
-        fun (num, tok) -> 
-        let _ = Format.pp_print_string Format.std_formatter (Format.sprintf "Line %d: \n" num)
+    |> List.map (fun (num, tok) -> 
+        let _ = (let _ = Format.print_string (Format.sprintf "Line %d: \n" num)
         in
         List.iter (fun t -> 
             let _ = Format.printf "\t" in
-            let _ = Craft.Token.pp_token Format.std_formatter t in
-            Format.pp_print_newline Format.std_formatter ()
-        ) tok 
+            let _ = Format.print_string (Craft.Token.show_token t) in
+            Format.print_newline ()
+        ) tok ) 
+        in (num, tok)
     )
+    |> Craft.Exec.normalize
+    |> Craft.Expr.parse
+    |> Craft.Expr.show_expr
+    |> function s -> 
+        let _ = Format.print_newline () in
+        Format.print_string s
 ;;
 
 let main () = 
     if Array.length Sys.argv < 2 then
         Format.printf "usage: craft <script>\n"
     else if Array.length Sys.argv = 2 then
-        ignore @@ runfile Sys.argv.(1)
+        let _ = Format.print_newline () in
+        let _ = ignore @@ runfile Sys.argv.(1) in
+        let _ = Format.print_newline () in
+        Format.print_newline ()
     else
         ()
 ;;

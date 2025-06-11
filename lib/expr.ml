@@ -1,11 +1,22 @@
+(*
+    Recursive descent parser
+*)
+open Effect;;
+open Effect.Deep;;
 open Token;;
+
+type tokseq = (tokentype * int * int ) Seq.t 
+
+type _ Effect.t += 
+    | Synchronize: (tokseq * string) -> tokseq Effect.t
+;;
 
 type lit = 
     | Nil
+    | Close
     | Bool   of bool
     | Number of float
     | String of string
-    | Expr   of expr
 
 and unary = 
     | Negate 
@@ -37,105 +48,112 @@ and expr =
     | Operator of equality
     | Unary    of (unary * expr)
     | Binary   of (expr * expr * expr)
-    | Grouping of expr
+    | Grouping of expr 
+    | Stmts    of expr list
     | Unhandled of (tokentype * int * int) (* token line col *)
 
 [@@deriving show];;
 
 let rec _expression tseq = 
-    _equality tseq 
+
+    let (ast', ts') = _equality tseq in 
+    (ast', ts')
 
 and _equality tseq' = 
-    let (l_expr, tseq'') = _comp tseq' in 
+    let (lexpr, tseq'') = _comp tseq' in 
 
-    let check ts = 
+    let rec check l_expr ts = 
         match Seq.uncons ts with
         | Some ((p, _l, _c), r) ->
             (match p with
                 | BANG_EQUAL  -> 
                     let r_expr, _ts' = _comp r in
-                    (Binary (l_expr, (Operator NotEq), r_expr), _ts')
+                    let l_expr' = (Binary (l_expr, (Operator NotEq), r_expr)) 
+                    in check l_expr' _ts' 
                 | EQUAL_EQUAL -> 
                     let r_expr, _ts' = _comp r in
-                    (Binary (l_expr, (Operator Eq), r_expr), _ts')
+                    let l_expr' = (Binary (l_expr, (Operator Eq), r_expr)) 
+                    in check l_expr' _ts' 
                 | _ -> 
                     (l_expr, ts)
             )
         | None ->
             (l_expr, ts)
-    in check tseq'' 
+    in check lexpr tseq'' 
 
 and _comp compseq  = 
-    let (l_expr, compseq') = _term compseq in
+    let (lexpr, compseq') = _term compseq in
 
-    let check ts = 
+    let rec check l_expr ts = 
         match Seq.uncons ts with
         | Some ((p, _l, _c), r) ->
             (match p with
                 | GREATER  -> 
                     let r_expr, _ts' = _term r in
-                    (Binary (l_expr, (Compr Greater), r_expr), _ts')
+                    let lexpr' = (Binary (l_expr, (Compr Greater), r_expr)) in 
+                    check lexpr' _ts'
                 | GREATER_EQUAL -> 
                     let r_expr, _ts' = _term r in
-                    (Binary (l_expr, (Compr GreaterEq), r_expr), _ts')
+                    let lexpr' = (Binary (l_expr, (Compr GreaterEq), r_expr)) in
+                    check lexpr' _ts'
                 | LESS -> 
                     let r_expr, _ts' = _term r in
-                    (Binary (l_expr, (Compr Lesser), r_expr), _ts')
+                    let lexpr' = (Binary (l_expr, (Compr Lesser), r_expr)) in 
+                    check lexpr' _ts'
                 | LESS_EQUAL -> 
                     let r_expr, _ts' = _term r in
-                    (Binary (l_expr, (Compr Lesser), r_expr), _ts')
+                    let lexpr' = (Binary (l_expr, (Compr Lesser), r_expr)) in
+                    check lexpr' _ts'
                 | _ -> 
                     (l_expr, ts)
             )
         | None ->
             (l_expr, ts)
-    in check compseq' 
+    in check lexpr compseq' 
 
 and _term termseq =  
-    let (l_expr, termseq') = _factor termseq in
+    let (lexpr, termseq') = _factor termseq in
 
-    let check ts = 
+    let rec check l_expr ts = 
         match Seq.uncons ts with
         | Some ((p, _l, _c), r) ->
             (match p with
-                | GREATER  -> 
+                | MINUS  -> 
                     let r_expr, _ts' = _term r in
-                    (Binary (l_expr, (Compr Greater), r_expr), _ts')
-                | GREATER_EQUAL -> 
+                    let lexpr' = (Binary (l_expr, (Term Sub), r_expr)) in
+                    check lexpr' _ts'
+                | PLUS -> 
                     let r_expr, _ts' = _term r in
-                    (Binary (l_expr, (Compr GreaterEq), r_expr), _ts')
-                | LESS -> 
-                    let r_expr, _ts' = _term r in
-                    (Binary (l_expr, (Compr Lesser), r_expr), _ts')
-                | LESS_EQUAL -> 
-                    let r_expr, _ts' = _term r in
-                    (Binary (l_expr, (Compr LesserEq), r_expr), _ts')
+                    let lexpr' = (Binary (l_expr, (Term Add), r_expr)) in
+                    check lexpr' _ts'
                 | _ -> 
                     (l_expr, ts)
             )
         | None ->
             (l_expr, ts)
-    in check termseq' 
+    in check lexpr termseq' 
 
 and _factor facseq =
-    let (l_expr, facseq') = _factor facseq in
+    let (lexpr, facseq') = _unary facseq in
 
-    let check ts = 
+    let rec check l_expr ts = 
         match Seq.uncons ts with
         | Some ((p, _l, _c), r) ->
             (match p with
                 | SLASH  -> 
                     let r_expr, _ts' = _term r in
-                    (Binary (l_expr, (Factor Div), r_expr), _ts')
+                    let lexpr' = (Binary (l_expr, (Factor Div), r_expr)) in
+                    check lexpr' _ts'
                 | STAR -> 
                     let r_expr, _ts' = _term r in
-                    (Binary (l_expr, (Factor Mul), r_expr), _ts')
+                    let lexpr' = (Binary (l_expr, (Factor Mul), r_expr)) in 
+                    check lexpr' _ts'
                 | _ -> 
                     (l_expr, ts)
             )
         | None ->
             (l_expr, ts)
-    in check facseq' 
+    in check lexpr facseq' 
 
 and _unary useq = 
 
@@ -156,6 +174,7 @@ and _unary useq =
     ) 
 
 and primary pseq = 
+
     match Seq.uncons pseq with
     | Some ((p, l', c'), r) ->
         (match p with
@@ -163,20 +182,57 @@ and primary pseq =
             | TRUE       -> (Literal (Bool true) , r)
             | NUMBER f   -> (Literal (Number f)  , r)
             | STRING s   -> (Literal (String s)  , r)
+            | SEMICOLON  -> (Literal Close, r) (* terminate *)
             | LEFT_PAREN ->
                 let expr', r' = _expression r in
                 (match Seq.uncons r' with
                     | Some ((RIGHT_PAREN, _l, _c), r'') -> 
                         (Grouping expr', r'')
-                    | Some ((p, l, c), _) -> 
-                        failwith (Format.sprintf "Error - unmatched quote expected at line %d col %d! found: %s" l c (show_tokentype p))
+                    | Some ((p, l, c), r'') -> 
+                        let err = (Format.sprintf "Error - unmatched parentheses expected at line %d col %d! found: %s" l c (show_tokentype p)) in
+                        let r''' = perform (Synchronize (r'', err)) in 
+                        (Unhandled (p, l, c), r''')
                     | _ -> 
-                        failwith (Format.sprintf "Error - unmatched quote line %d col %d! found: %s" l' c' (show_tokentype p))
+                        let err = (Format.sprintf "Error - unmatched parentheses line %d col %d! found: %s" l' c' (show_tokentype p)) in
+                        let r''' = perform (Synchronize (r', err)) in 
+                        (Unhandled (p, l', c'), r''')
                 )
             | t -> 
                 (Unhandled (t, l', c'), r)
         )
     | None ->
         (Literal Nil, pseq)
+;;
+
+ let parse tseq = 
+    let rec _parse stmts ts =
+        try 
+            let (stmt, more) = _expression ts in 
+            if Seq.is_empty more then
+                Stmts (List.rev (stmt :: stmts))
+            else
+                _parse (stmt :: stmts) more
+        with 
+            (* failover for parse errors *)
+            | effect Synchronize (t, e), k -> 
+                let _ = Format.printf "Synchronize from Error: %s\n" e in
+                let t'= (Seq.drop_while (fun (p, _l, _c) -> 
+                    match p with
+                    | SEMICOLON -> false
+                    | FUN       -> false
+                    | VAR       -> false
+                    | FOR       -> false
+                    | IF        -> false
+                    | WHILE     -> false
+                    | PRINT     -> false
+                    | RETURN    -> false
+                    | _         -> true
+                ) t) in
+                match Seq.uncons t' with
+                | Some ((SEMICOLON, _, _), r) ->
+                        continue k r
+                | _ -> 
+                    continue k t'
+    in _parse [] tseq
 ;;
 

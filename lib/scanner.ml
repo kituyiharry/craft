@@ -184,14 +184,14 @@ let parse_token tok lseqst cseqst =
                                 cont s), lseqst, more')
                         )
 
-                | (false, seqst') -> 
+                | (false, _seqst') -> 
                     let cont = (Buffer.contents mbuf) in
                     try
                         let flt = Float.of_string cont in
-                        (Ok (NUMBER flt), lseqst, seqst') 
+                        (Ok (NUMBER flt), lseqst, more) 
                     with
                         | Failure s -> 
-                        (Error (Format.sprintf "Invalid number: %s (%s)" cont s), lseqst, seqst')
+                        (Error (Format.sprintf "Invalid number: %s (%s)" cont s), lseqst, more)
             )
         else if isAlpha c then 
             let mbuf = Buffer.create 10 in
