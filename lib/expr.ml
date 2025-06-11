@@ -50,7 +50,7 @@ and expr =
     | Binary   of (expr * expr * expr)
     | Grouping of expr 
     | Stmts    of expr list
-    | Unhandled of (tokentype * int * int) (* token line col *)
+    | Unhandled of (expr option * tokentype * int * int) (* line-ast token line col *)
 
 [@@deriving show];;
 
@@ -188,17 +188,19 @@ and primary pseq =
                 (match Seq.uncons r' with
                     | Some ((RIGHT_PAREN, _l, _c), r'') -> 
                         (Grouping expr', r'')
-                    | Some ((p, l, c), r'') -> 
+                    | Some ((p, l, c), _r'') -> 
                         let err = (Format.sprintf "Error - unmatched parentheses expected at line %d col %d! found: %s" l c (show_tokentype p)) in
-                        let r''' = perform (Synchronize (r'', err)) in 
-                        (Unhandled (p, l, c), r''')
+                        (*let r''' = perform (Synchronize (r'', err)) in *)
+                        let r''' = perform (Synchronize (r', err)) in 
+                        (Unhandled ((Some expr'), p, l, c), r''')
                     | _ -> 
                         let err = (Format.sprintf "Error - unmatched parentheses line %d col %d! found: %s" l' c' (show_tokentype p)) in
+                        (*let r''' = perform (Synchronize (r', err)) in *)
                         let r''' = perform (Synchronize (r', err)) in 
-                        (Unhandled (p, l', c'), r''')
+                        (Unhandled ((Some expr'), p, l', c'), r''')
                 )
             | t -> 
-                (Unhandled (t, l', c'), r)
+                (Unhandled ((None), t, l', c'), r)
         )
     | None ->
         (Literal Nil, pseq)
@@ -230,7 +232,7 @@ and primary pseq =
                 ) t) in
                 match Seq.uncons t' with
                 | Some ((SEMICOLON, _, _), r) ->
-                        continue k r
+                    continue k r
                 | _ -> 
                     continue k t'
     in _parse [] tseq

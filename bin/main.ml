@@ -3,17 +3,15 @@ let runfile fname =
     let _ = Format.print_newline () in
     Craft.Io.fopen fname 
     |> Craft.Exec.run
-    |> fst (* use snd to view errors *)
-    |> List.map (fun (num, tok) -> 
-        let _ = (let _ = Format.print_string (Format.sprintf "Line %d: \n" num)
-        in
-        List.iter (fun t -> 
-            let _ = Format.printf "\t" in
-            let _ = Format.print_string (Craft.Token.show_token t) in
-            Format.print_newline ()
-        ) tok ) 
-        in (num, tok)
-    )
+    |> (function {Craft.Scanner.errs;Craft.Scanner.toks} -> 
+            let _ = 
+                (List.iter (fun (lineno, errline) ->
+                    List.iter (fun (colno, msg) -> 
+                        Format.printf "Error lexing at line %d col %d: %s\n" lineno colno msg
+                    ) errline
+                ) errs)
+            in toks
+        )
     |> Craft.Exec.normalize
     |> Craft.Expr.parse
     |> Craft.Expr.show_expr

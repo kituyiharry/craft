@@ -5,9 +5,14 @@ open Token;;
 type lines = (string * int) Seq.t;;
 type chars = (char   * int) Seq.t;;
 
+type lexout = {
+        errs: (int * ((int * string) list)) list (* line * ((col * errmsg) list) *)
+    ;   toks: (int * token list) list            (* line * tokens *)
+} [@@deriving show];;
+
 type _ Effect.t += 
     (* Effects on a single line *)
-    | SkipLine: chars -> chars Effect.t        (* Skip the whole line *)
+    | SkipLine: chars -> chars Effect.t         (* Skip the whole line *)
     | SkipChars: chars * int  -> chars Effect.t (* Skip n chars *)
     | Collect : chars * (char -> bool) -> (chars * bool * Buffer.t) Effect.t (* Collect until we find char *)
     (* Effects on multiple lines *)
@@ -19,9 +24,9 @@ let error line col message =
 ;;
 
 (* A variation of Seq.drop_while but it drops until 2 conditions in a row are
-   satisfied *)
+   satisfied and returns a match *)
 let rec drop_til_follows p1 p2 xs =
-    match xs() with
+    match xs () with
     | Seq.Nil ->
         (false, Seq.Nil)
     | Seq.Cons (x, xs) ->
@@ -219,7 +224,7 @@ let scan_tokens lines charseq =
                 | Ok lexeme ->
                     chars lines' (more') ((Token.mktoken lexeme col) :: state) errs
                 | Error e -> 
-                    chars lines' (more') (state) ((Error (e, col)) :: errs)
+                    chars lines' (more') (state) (((col, e)) :: errs)
             with
                 (* single line comment has the effect of ignoring until a newline is reached *)
                 | effect (SkipLine _more'), k ->
@@ -252,9 +257,11 @@ let scan_lines lineseq =
         | Some ((line, num), more) -> 
             (try 
                 let (lexemes', tokerrs) = scan_tokens more (line |> String.to_seq) in
-                let state' = (num, lexemes') :: state in
+                let state' = (if List.is_empty lexemes' then state else
+                    (num, lexemes') :: state 
+                ) in
                 let errs'  = (if List.is_empty tokerrs then errs else 
-                    (line, tokerrs) :: errs
+                    (num, tokerrs) :: errs
                 ) in 
                 lines more state' errs'
             with 
@@ -274,7 +281,7 @@ let scan_lines lineseq =
                     let (y, z, m) = drop_to more' in
                     continue k (y, m, z))
         | None -> 
-            (List.rev state, List.rev errs)
+            { toks = (List.rev state); errs = (List.rev errs); }
     in lines lseq [] []
 ;;
 
