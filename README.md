@@ -1,12 +1,12 @@
 # Craft lang
 
-ongoing interpretation of <https://craftinginterpreters.com/>.
+- ongoing implementation of <https://craftinginterpreters.com/>.
 
-Extras:
-    - Functional interpretation
-    - Scanning uses ocamls effects system
-    - Lazy (uses Seq)
-    
+### Extras:
+
+    1. Functional interpretation
+    2. Scanning uses ocamls effects system
+    3. Lazy (uses Seq)
 
 to run execute: 
 
