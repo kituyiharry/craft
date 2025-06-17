@@ -12,9 +12,27 @@ let runfile fname =
                 ) errs)
             in toks
         )
+    |> List.map (fun (_x, l) -> 
+        let _ = List.iter (fun t -> 
+            let s = Craft.Token.show_token t in 
+            let _ = Format.print_newline () in
+            Format.print_string s
+        ) l in
+        let _ = Format.print_newline () in
+        (_x, l)
+    )
     |> Craft.Exec.normalize
     |> Craft.Ast.parse
-    |> Craft.Ast.show_expr
+    |> function 
+        | b -> 
+            let _ = Format.print_newline () in
+            let s = Craft.Ast.show_source b in 
+            let _ = Format.print_string s in
+            let _ = Format.print_newline () in
+            let _ = Format.print_newline () in
+            b
+    |> Craft.Eval.eval_exprs
+    |> Craft.Ast.show_source
     |> function s -> 
         let _ = Format.print_newline () in
         Format.print_string s

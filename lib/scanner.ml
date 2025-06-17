@@ -10,6 +10,9 @@ type lexout = {
     ;   toks: (int * token list) list            (* line * tokens *)
 } [@@deriving show];;
 
+(* Store keywords *)
+module Kt = Hashtbl.Make(String) ;;
+
 type _ Effect.t += 
     (* Effects on a single line *)
     | SkipLine: chars -> chars Effect.t         (* Skip the whole line *)
@@ -64,25 +67,34 @@ let isAlphaNumeric c =
   isAlpha(c) || isDigit(c);
 ;;
 
+let ht = 
+    let h = Kt.create 20 in
+    let _ = [
+        ("and"   , AND   );
+        ("class" , CLASS );
+        ("else"  , ELSE  );
+        ("false" , FALSE );
+        ("for"   , FOR   );
+        ("fun"   , FUN   );
+        ("if"    , IF    );
+        ("nil"   , NIL   );
+        ("or"    , OR    );
+        ("print" , PRINT );
+        ("return", RETURN);
+        ("super" , SUPER );
+        ("this"  , THIS  );
+        ("true"  , TRUE  );
+        ("var"   , VAR   );
+        ("while" , WHILE );
+        (*_ -> IDENTIFIER k *)
+    ] |> List.iter (fun (k, v) -> Kt.add h k v) in 
+    h
+;;
+
 let keyword k =
-    match k with
-    |"and"     -> AND
-    |"class"   -> CLASS
-    |"else"    -> ELSE
-    |"false"   -> FALSE
-    |"for"     -> FOR
-    |"fun"     -> FUN
-    |"if"      -> IF
-    |"nil"     -> NIL
-    |"or"      -> OR
-    |"print"   -> PRINT
-    |"return"  -> RETURN
-    |"super"   -> SUPER
-    |"this"    -> THIS
-    |"true"    -> TRUE
-    |"var"     -> VAR
-    |"while"   -> WHILE
-    |_         -> IDENTIFIER k
+    match Kt.find_opt ht k with
+    | Some t -> t 
+    | None -> IDENTIFIER k
 ;;
 
 let parse_token tok lseqst cseqst = 

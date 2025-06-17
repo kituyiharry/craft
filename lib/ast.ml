@@ -13,7 +13,6 @@ type _ Effect.t +=
 
 type lit = 
     | Nil
-    | Close
     | Bool   of bool
     | Number of float
     | String of string
@@ -41,23 +40,46 @@ and equality =
     | NotEq 
 
 and expr =
-    | Literal  of lit
-    | Factor   of factor
-    | Term     of term
-    | Compr    of comparison
-    | Operator of equality
-    | Unary    of (unary * expr)
-    | Binary   of (expr * expr * expr)
-    | Grouping of expr 
-    | Stmts    of expr list
-    | Unhandled of (expr option * tokentype * int * int) (* line-ast token line col *)
+    | Literal   of lit
+    | Factor    of factor
+    | Term      of term
+    | Compr     of comparison
+    | Operator  of equality
+    | Unary     of unary * expr
+    | Binary    of expr * expr * expr
+    | Grouping  of expr 
+    | Unhandled of expr option * tokentype * int * int (* line-ast token line col *)
+
+and builtin = 
+    | Print of expr
+
+and exprst = 
+    | Eval of expr
+
+and effcst = 
+    | Effect of builtin
+
+and stmt  = 
+    | Raw  of exprst
+    | Side of effcst
+
+and source = 
+    | Program of (stmt list)
 
 [@@deriving show];;
 
-let rec _expression tseq = 
+let rec _program tseq = 
 
-    let (ast', ts') = _equality tseq in 
-    (ast', ts')
+    match Seq.uncons tseq with
+    | Some(((PRINT), _, _), tseq') -> 
+        let (ast', ts') = _expression tseq' in 
+        ((Side (Effect (Print ast'))), ts')
+    | _ -> 
+        let (ast', ts') = _expression tseq in 
+        ((Raw (Eval ast')), ts')
+
+and _expression exseq' = 
+    _equality exseq'
 
 and _equality tseq' = 
     let (lexpr, tseq'') = _comp tseq' in 
@@ -102,7 +124,7 @@ and _comp compseq  =
                     check lexpr' _ts'
                 | LESS_EQUAL -> 
                     let r_expr, _ts' = _term r in
-                    let lexpr' = (Binary (l_expr, (Compr Lesser), r_expr)) in
+                    let lexpr' = (Binary (l_expr, (Compr LesserEq), r_expr)) in
                     check lexpr' _ts'
                 | _ -> 
                     (l_expr, ts)
@@ -182,7 +204,7 @@ and primary pseq =
             | TRUE       -> (Literal (Bool true) , r)
             | NUMBER f   -> (Literal (Number f)  , r)
             | STRING s   -> (Literal (String s)  , r)
-            | SEMICOLON  -> (Literal Close, r) (* terminate *)
+            | SEMICOLON  -> (Literal Nil, r) (* terminate *)
             | LEFT_PAREN ->
                 let expr', r' = _expression r in
                 (match Seq.uncons r' with
@@ -209,15 +231,18 @@ and primary pseq =
  let parse tseq = 
     let rec _parse stmts ts =
         try 
-            let (stmt, more) = _expression ts in 
+            let (stmt, more) = _program ts in 
             if Seq.is_empty more then
-                Stmts (List.rev (stmt :: stmts))
+                Program (List.rev (stmt :: stmts))
             else
-                _parse (stmt :: stmts) more
+                match Seq.uncons ts with
+                | Some ((SEMICOLON, _l', _c'), more') -> 
+                    _parse (stmt :: stmts) more'
+                | _ ->
+                    _parse (stmt :: stmts) more
         with 
             (* failover for parse errors *)
-            | effect Synchronize (t, e), k -> 
-                let _ = Format.printf "Synchronize from Error: %s\n" e in
+            | effect Synchronize (t, _e), k -> 
                 let t'= (Seq.drop_while (fun (p, _l, _c) -> 
                     match p with
                     | SEMICOLON -> false
