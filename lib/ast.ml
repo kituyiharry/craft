@@ -12,6 +12,7 @@ type _ Effect.t +=
 ;;
 
 type lit = 
+    | Eol
     | Nil
     | Bool   of bool
     | Number of float
@@ -192,7 +193,7 @@ and _unary useq =
                 primary useq
         )
     | None ->
-        (Literal Nil, useq)
+        (Literal Eol, useq)
     ) 
 
 and primary pseq = 
@@ -204,14 +205,14 @@ and primary pseq =
             | TRUE       -> (Literal (Bool true) , r)
             | NUMBER f   -> (Literal (Number f)  , r)
             | STRING s   -> (Literal (String s)  , r)
-            | SEMICOLON  -> (Literal Nil, r) (* terminate *)
+            | SEMICOLON  -> (Literal Eol, r) (* terminate *)
             | LEFT_PAREN ->
                 let expr', r' = _expression r in
                 (match Seq.uncons r' with
                     | Some ((RIGHT_PAREN, _l, _c), r'') -> 
                         (Grouping expr', r'')
                     | Some ((p, l, c), _r'') -> 
-                        let err = (Format.sprintf "Error - unmatched parentheses expected at line %d col %d! found: %s" l c (show_tokentype p)) in
+                        let err = (Format.sprintf "Error - unmatched parentheses line %d col %d! found: %s" l c (show_tokentype p)) in
                         (*let r''' = perform (Synchronize (r'', err)) in *)
                         let r''' = perform (Synchronize (r', err)) in 
                         (Unhandled ((Some expr'), p, l, c), r''')

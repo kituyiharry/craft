@@ -3,7 +3,7 @@ open Ast
 let (let*) = Result.bind;; 
 
 let rec eval = function 
-    | Literal l   -> Ok l
+    | Literal  l  -> Ok l
     | Grouping g  -> eval g
     | Unhandled (e, _, _, _) -> Error (Format.sprintf "invalid expression: %s!!" (show_expr (Option.value ~default:(Literal Nil) e)))
     | Unary (op, u) -> 
@@ -87,28 +87,48 @@ let rec eval = function
     | e -> Error ((Format.sprintf "Unhandled  for expr: %s" (show_expr e)))
 ;;
 
+let mkraw l = 
+    Raw (Eval (Literal l))
+;;
+
 let eval_exprs (Program el) =
-    (Program (List.filter_map (fun x -> match x with 
-        | (Raw (Eval (Literal Nil)))  ->  None
-        | (Raw (Eval e'))  -> (match (eval e') with 
-            |  Ok o    -> Some (Raw (Eval (Literal o))) 
-            |  Error err -> 
-                let _ = Format.printf "Raw Eval error!!: %s\n" err in
-                None)
-        | ((Side (Effect (Print e')))) -> (match (eval e') with 
-            |  Ok o    -> let _ = (match o with
-                    | (Bool b) -> 
-                        Format.print_bool b 
-                    | (Number n) -> 
-                        Format.print_float n 
-                    | (String s) -> 
-                        Format.print_string s
-                    | Nil -> 
-                        Format.print_string "nil"
-                ) in
-                Some (Raw (Eval (Literal o))) 
-            |  Error err -> 
-                let _ = Format.printf "Effect Eval error!!: %s\n" err in
-                None)          
-    ) el))
+    let astseq = (List.to_seq el) in 
+    
+    let rec foldast state tseq =
+        (match Seq.uncons tseq with 
+            | Some ((_ast), more) -> 
+                (match _ast with
+                (* newline *)
+                | (Raw (Eval (Literal Eol)))  ->  
+                    foldast (state) more
+                | (Raw (Eval e'))  -> (match (eval e') with 
+                    |  Ok o    -> 
+                        foldast ((mkraw o) :: state) more
+                    |  Error err -> 
+                        let _ = Format.printf "Raw Eval error!!: %s\n" err in
+                        foldast state more
+                    )
+                | ((Side (Effect (Print e')))) -> (match (eval e') with 
+                    |  Ok o    -> let _ = (match o with
+                            | (Bool b) -> 
+                                Format.printf "%b\n" b 
+                            | (Number n) -> 
+                                Format.printf "%f\n" n 
+                            | (String s) -> 
+                                Format.printf "%s\n" s
+                            | Nil -> 
+                                Format.printf "nil\n"
+                            |_ ->
+                                (* TODO: runtime error *)
+                                ()
+                        ) in
+                        foldast ((mkraw o) :: state) more
+                    |  Error err -> 
+                        let _ = Format.printf "Effect Eval error!!: %s\n" err in
+                        foldast state more
+                    ))          
+            | _ ->
+                Program (state)
+        )
+    in foldast [] astseq
 ;;
