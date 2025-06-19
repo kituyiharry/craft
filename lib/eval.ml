@@ -1,67 +1,67 @@
 open Ast
 
-let (let*) = Result.bind;; 
+let (let*) = Result.bind;;
 
-let rec eval = function 
+let rec eval = function
     | Literal  l  -> Ok l
     | Grouping g  -> eval g
-    | Unhandled (e, _, _, _) -> Error (Format.sprintf "invalid expression: %s!!" (show_expr (Option.value ~default:(Literal Nil) e)))
-    | Unary (op, u) -> 
+    | Unhandled {err=s;_} -> Error s
+    | Unary (op, u) ->
         let* u' = eval u in
         (match op with
-            | Negate -> (match u' with 
-                    | Number f -> (Ok (Number (Float.neg f))) 
-                    | n -> Error (Format.sprintf "attempt to negate %s" (show_lit n))
+            | Negate -> (match u' with
+                    | Number f -> (Ok (Number (Float.neg f)))
+                    | n -> Error (BadExp (u, Some n))
                 )
-            | Invert -> (match u' with 
-                    | Bool b -> Ok (Bool (Bool.not b)) 
-                    | n -> Error (Format.sprintf "attempt to Invert %s" (show_lit n))
+            | Invert -> (match u' with
+                    | Bool b -> Ok (Bool (Bool.not b))
+                    | n -> Error (BadExp (u, Some n))
                 )
         )
-    | Binary   (l, op, r) -> 
+    | Binary   (l, op, r) ->
         let* l' = eval l in
         let* r' = eval r in
         (match op with
             | Compr o -> (match o with
                 | Greater    -> (match (l', r') with
-                    | (Number l'', Number r'') -> Ok (Bool ((Float.compare l'' r'') = 1)) 
-                    | (x, y) -> 
-                        Error ((Format.sprintf "invalid bool operands: %s = %s" (show_lit x) (show_lit y)))
+                    | (Number l'', Number r'') -> Ok (Bool ((Float.compare l'' r'') = 1))
+                    | (x, y) ->
+                        Error (BadMatch (x, op, y))
                     )
                 | GreaterEq -> (match (l', r') with
                     | (Number l'', Number r'') ->
                         let x = Float.compare l'' r'' in
-                        Ok (Bool (x = 1 || x = 0)) 
-                    | (x, y) -> 
-                        Error ((Format.sprintf "invalid bool operands: %s != %s" (show_lit x) (show_lit y)))
+                        Ok (Bool (x = 1 || x = 0))
+                    | (x, y) ->
+                        Error (BadMatch (x, op, y))
                     )
                 | Lesser -> (match (l', r') with
-                    | (Number l'', Number r'') -> Ok (Bool ((Float.compare l'' r'') = -1)) 
-                    | (x, y) -> 
-                        Error ((Format.sprintf "invalid bool operands: %s != %s" (show_lit x) (show_lit y)))
+                    | (Number l'', Number r'') -> Ok (Bool ((Float.compare l'' r'') = -1))
+                    | (x, y) ->
+                        Error (BadMatch (x, op, y))
                     )
                 | LesserEq -> (match (l', r') with
-                    | (Number l', Number r') -> 
+                    | (Number l', Number r') ->
                         let x = Float.compare l' r' in
-                        Ok (Bool (x = -1 || x = 0)) 
-                    | (x, y) -> 
-                        Error ((Format.sprintf "invalid bool operands: %s != %s" (show_lit x) (show_lit y)))
+                        Ok (Bool (x = -1 || x = 0))
+                    | (x, y) ->
+                        Error (BadMatch (x, op, y))
                     )
-                ) 
+                )
             | Operator o -> (match o with
                 | Eq    -> (match ( l',  r') with
-                    | (Bool   l'', Bool   r'') -> Ok (Bool ((=) l'' r'')) 
+                    | (Bool   l'', Bool   r'') -> Ok (Bool ((=) l'' r''))
                     | (Number l'', Number r'') -> Ok (Bool (Float.equal l'' r''))
-                    | (x, y) -> 
-                        Error ((Format.sprintf "invalid bool operands: %s = %s" (show_lit x) (show_lit y)))
+                    | (x, y) ->
+                        Error (BadMatch (x, op, y))
                     )
                 | NotEq -> (match ( l',  r') with
-                    | (Bool   l'', Bool   r'') -> Ok (Bool ((!=) l'' r'')) 
-                    | (Number l'', Number r'') -> Ok (Bool (not @@ Float.equal l'' r'')) 
-                    | (x, y) -> 
-                        Error ((Format.sprintf "invalid bool operands: %s != %s" (show_lit x) (show_lit y)))
+                    | (Bool   l'', Bool   r'') -> Ok (Bool ((!=) l'' r''))
+                    | (Number l'', Number r'') -> Ok (Bool (not @@ Float.equal l'' r''))
+                    | (x, y) ->
+                        Error (BadMatch (x, op, y))
                     )
-                ) 
+                )
             | Term     t -> (match ( l',  r') with
                     | (Number l'', Number r'') -> (match t with
                         | Add -> Ok (Number (Float.add l'' r''))
@@ -69,66 +69,74 @@ let rec eval = function
                         )
                     | (String l'', String r'') -> (match t with
                         | Add -> Ok (String (String.cat l'' r''))
-                        | _ ->   Error (Format.sprintf "invalid term for string cons? s")
+                        | _ ->   Error (BadOp (l', op, r'))
                         )
-                    | (x, y) -> 
-                        Error ((Format.sprintf "invalid term operands: %s != %s" (show_lit x) (show_lit y)))
+                    | (x, y) ->
+                        Error (BadMatch (x, op, y))
                 )
             | Factor   f -> (match ( l',  r') with
+                    | (Number _, Number (0.)) ->
+                        Error (BadOp (l', op, r'))
                     | (Number l'', Number r'') -> (match f with
                         | Div -> Ok (Number (Float.div l'' r''))
                         | Mul -> Ok (Number (Float.mul l'' r''))
                         )
-                    | (x, y) -> 
-                        Error ((Format.sprintf "invalid term operands: %s != %s" (show_lit x) (show_lit y)))
+                    | (x, y) ->
+                        Error (BadMatch (x, op, y))
                 )
-            | n -> Error ((Format.sprintf "unkown operation %s" (show_expr n)))
+            | n -> Error (BadExp (n, None))
         )
-    | e -> Error ((Format.sprintf "Unhandled  for expr: %s" (show_expr e)))
+    | e -> Error (BadExp (e, None))
 ;;
 
-let mkraw l = 
-    Raw (Eval (Literal l))
+let mkraw l =
+    Stmt (Raw (Eval (Literal l)))
 ;;
 
-let eval_exprs (Program el) =
-    let astseq = (List.to_seq el) in 
-    
-    let rec foldast state tseq =
-        (match Seq.uncons tseq with 
-            | Some ((_ast), more) -> 
+let eval_exprs (Program {state=el;errs}) =
+    let astseq = (List.to_seq el) in
+
+    let rec foldast s tseq =
+        (match Seq.uncons tseq with
+            | Some ((_ast), more) ->
                 (match _ast with
                 (* newline *)
-                | (Raw (Eval (Literal Eol)))  ->  
-                    foldast (state) more
-                | (Raw (Eval e'))  -> (match (eval e') with 
-                    |  Ok o    -> 
-                        foldast ((mkraw o) :: state) more
-                    |  Error err -> 
-                        let _ = Format.printf "Raw Eval error!!: %s\n" err in
-                        foldast state more
+                | Stmt (Raw (Eval (Literal Eol)))  ->
+                    foldast s more
+                | Stmt (Raw (Eval e'))  -> (match (eval e') with
+                    |  Ok o    ->
+                        foldast { s with state = ((mkraw o) :: s.state) } more
+                    |  Error err ->
+                        (* TODO: pass line and col context too  *)
+                        (* FIXME: tokens ?? *)
+                        let err' = mkperr (-1) (-1) Token.EOF err in
+                        foldast { s with errs= (Unhandled err' :: s.errs) } more
                     )
-                | ((Side (Effect (Print e')))) -> (match (eval e') with 
+                | Stmt ((Side (Effect (Print e')))) -> (match (eval e') with
                     |  Ok o    -> let _ = (match o with
-                            | (Bool b) -> 
-                                Format.printf "%b\n" b 
-                            | (Number n) -> 
-                                Format.printf "%f\n" n 
-                            | (String s) -> 
+                            | (Bool b) ->
+                                Format.printf "%b\n" b
+                            | (Number n) ->
+                                Format.printf "%f\n" n
+                            | (String s) ->
                                 Format.printf "%s\n" s
-                            | Nil -> 
+                            | Nil ->
                                 Format.printf "nil\n"
                             |_ ->
                                 (* TODO: runtime error *)
                                 ()
                         ) in
-                        foldast ((mkraw o) :: state) more
-                    |  Error err -> 
-                        let _ = Format.printf "Effect Eval error!!: %s\n" err in
-                        foldast state more
-                    ))          
+                        foldast { s with state = ((mkraw o) :: s.state) } more
+                    |  Error err ->
+                        let err' = mkperr (-1) (-1) Token.EOF err in
+                        foldast { s with errs=(Unhandled err' :: s.errs) } more
+                    )
+                | VarDecl _l ->
+                    let err' = mkperr (-1) (-1) Token.EOF (Unrecognized) in
+                    foldast { s with errs=(Unhandled err' :: s.errs) } more
+                )
             | _ ->
-                Program (state)
+                Program (s)
         )
-    in foldast [] astseq
+    in foldast { state=[]; errs=errs } astseq
 ;;

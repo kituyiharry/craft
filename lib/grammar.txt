@@ -20,7 +20,10 @@ unary          → ( "!" | "-" ) unary
 primary        → NUMBER | STRING | "true" | "false" | "nil"
                | "(" expression ")" ;
 
-program        → statement* EOF ;
+program        → declaration* EOF ;
+
+declaration    → varDecl
+               | statement ;
 
 statement      → exprStmt
                | printStmt ;

@@ -23,14 +23,24 @@ let runfile fname =
     )
     |> Craft.Exec.normalize
     |> Craft.Ast.parse
-    |> function 
-        | b -> 
-            let _ = Format.print_newline () in
+    |> (function 
+        | Ok b -> 
+            (let b' = (let _ = Format.print_newline () in
             let s = Craft.Ast.show_source b in 
             let _ = Format.print_string s in
             let _ = Format.print_newline () in
             let _ = Format.print_newline () in
-            b
+            b) in b')
+        | Error (expr, _rem) -> 
+            (let b' = (
+            let _ = Format.print_newline () in
+            let s = Craft.Ast.show_expr expr in 
+            let _ = Format.print_string (String.cat "Error!!! -> " s) in
+            let _ = Format.print_newline () in
+            let _ = Format.print_newline () in
+                (Craft.Ast.Program {state=[];errs=[]})
+            ) in b')
+        )
     |> Craft.Eval.eval_exprs
     |> Craft.Ast.show_source
     |> function s -> 
