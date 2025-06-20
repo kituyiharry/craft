@@ -25,4 +25,6 @@ true != false;
 100 == (99 + 1);
 print "one"; print true;
 print "Hallo " + "World"; 
-print 2 + 1; let x = x + 1;
+print 2 + 1; 
+var hallo = x + 33 + 1;
+2333 + 2223;

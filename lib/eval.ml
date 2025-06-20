@@ -5,7 +5,7 @@ let (let*) = Result.bind;;
 let rec eval = function
     | Literal  l  -> Ok l
     | Grouping g  -> eval g
-    | Unhandled {err=s;_} -> Error s
+    | Unhandled (_t, s) -> Error s
     | Unary (op, u) ->
         let* u' = eval u in
         (match op with
@@ -109,8 +109,7 @@ let eval_exprs (Program {state=el;errs}) =
                     |  Error err ->
                         (* TODO: pass line and col context too  *)
                         (* FIXME: tokens ?? *)
-                        let err' = mkperr (-1) (-1) Token.EOF err in
-                        foldast { s with errs= (Unhandled err' :: s.errs) } more
+                        foldast { s with errs= (Unhandled (Eval, err) :: s.errs) } more
                     )
                 | Stmt ((Side (Effect (Print e')))) -> (match (eval e') with
                     |  Ok o    -> let _ = (match o with
@@ -128,12 +127,11 @@ let eval_exprs (Program {state=el;errs}) =
                         ) in
                         foldast { s with state = ((mkraw o) :: s.state) } more
                     |  Error err ->
-                        let err' = mkperr (-1) (-1) Token.EOF err in
-                        foldast { s with errs=(Unhandled err' :: s.errs) } more
+                        foldast { s with errs=(Unhandled (Eval, err) :: s.errs) } more
                     )
                 | VarDecl _l ->
-                    let err' = mkperr (-1) (-1) Token.EOF (Unrecognized) in
-                    foldast { s with errs=(Unhandled err' :: s.errs) } more
+                    (* TODO: handle *)
+                    foldast s more
                 )
             | _ ->
                 Program (s)

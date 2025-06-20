@@ -13,13 +13,19 @@ type _ Effect.t +=
     | Synchronize: tokseq -> tokseq Effect.t
 ;;
 
+type stage = 
+    | Lex 
+    | Parse 
+    | Eval 
+[@@deriving show];;
+
 type lit = 
     | Eol
     | Nil
-    | Bool   of bool
-    | Number of float
-    | String of string
-    | Ident  of string * lit option
+    | Bool     of bool
+    | Number   of float
+    | String   of string
+    | VarIdent of string
 
 and context = {
       state: declaration list 
@@ -27,19 +33,13 @@ and context = {
 }
 
 and crafterr = 
-    | Unmatched    of expr 
+    | Unmatched    of int * int * expr 
     | BadExp       of expr * (lit option)
     | BadMatch     of lit * expr * lit 
     | BadOp        of lit * expr * lit
-    | Unrecognized
-
-and parserr = {
-            line: int
-        ;   col : int 
-        ;   err : crafterr
-        ;   tok : tokentype
-        ;
-    }
+    | EndOfSeq     of string 
+    | Unexpected   of int * int * tokentype
+    | Unterminated
 
 and unary = 
     | Negate 
@@ -72,7 +72,7 @@ and expr =
     | Unary     of unary * expr
     | Binary    of expr * expr * expr
     | Grouping  of expr 
-    | Unhandled of parserr (* line-ast token line col *)
+    | Unhandled of stage * crafterr (* line-ast token line col *)
 
 and builtin = 
     | Print of expr
@@ -88,7 +88,7 @@ and stmt  =
     | Side of apply
 
 and declaration = 
-    | VarDecl of lit
+    | VarDecl of (string * expr)
     | Stmt    of stmt
 
 and source = 
@@ -96,31 +96,43 @@ and source =
 
 [@@deriving show];;
 
-let mkperr l c t e = 
-    {line=l; col=c; tok=t; err=e} 
-;;
-
 let rec _program tseq = 
 
     match Seq.uncons tseq with
     | Some(((PRINT), _, _), tseq') -> 
-        let* (ast', ts') = _expression tseq' in 
-        Ok (Stmt (Side (Effect (Print ast'))), ts')
-    (*| Some(((VAR), _, _), tseq') -> *)
-        (*let (ast', ts') = _vardecl tseq' in *)
-        (*(VarDecl (ast'), ts')*)
+        _printstmt tseq'
+    | Some(((VAR), _, _), tseq') -> 
+        _vardecl tseq'
     | _ -> 
-        let* (ast', ts') = _expression tseq in 
-        Ok ((Stmt (Raw (Eval ast'))), ts')
+        _express tseq
 
-(*and _vardecl vseq = *)
+and _express eseq = 
+    let* (ast', ts') = _expression eseq in 
+    Ok ((Stmt (Raw (Eval ast'))), ts')
 
-    (*match Seq.uncons vseq with*)
-    (*| Some(((IDENTIFIER ident), _, _), tseq') -> *)
-        (*primary tseq'*)
-    (*| _ -> *)
-        (*let (ast', ts') = _expression tseq in *)
-        (*((ast')), ts')*)
+and _printstmt pseq =
+    let* (ast', ts') = _expression pseq in 
+    Ok (Stmt (Side (Effect (Print ast'))), ts')
+
+and _vardecl vseq = 
+
+    match Seq.uncons vseq with
+    | Some(((IDENTIFIER ident), _, _), tseq') -> 
+        (match Seq.uncons tseq' with
+            | Some(((EQUAL), _, _), tseq'') -> 
+                let* (ast, ts) = _expression tseq'' in 
+                Ok (VarDecl (ident, ast), ts)
+            | Some ((t, l, c), tseq'') -> 
+                Error ((Unhandled (Parse, (Unexpected (l, c, t)))), tseq'')
+            | _ -> 
+                let e = "expected var identifier expr" in
+                Error ((Unhandled (Parse, (EndOfSeq e))), tseq')
+        )
+    | Some((p , l, c), _tseq') -> 
+        Error ((Unhandled (Parse, Unexpected (l, c, p))), vseq)
+    | _ -> 
+        let e = "expected identifier token" in
+        Error ((Unhandled (Parse, EndOfSeq e)), vseq)
 
 and _expression exseq' = 
     _equality exseq'
@@ -244,24 +256,25 @@ and primary pseq =
     match Seq.uncons pseq with
     | Some ((p, l', c'), r) ->
         (match p with
-            | FALSE      -> Ok (Literal (Bool false), r)
-            | TRUE       -> Ok (Literal (Bool true) , r)
-            | NUMBER f   -> Ok (Literal (Number f)  , r)
-            | STRING s   -> Ok (Literal (String s)  , r)
+            | FALSE        -> Ok (Literal (Bool false), r)
+            | TRUE         -> Ok (Literal (Bool true) , r)
+            | NUMBER f     -> Ok (Literal (Number f)  , r)
+            | STRING s     -> Ok (Literal (String s)  , r)
+            | IDENTIFIER i -> Ok (Literal (VarIdent i), r)
             | LEFT_PAREN ->
                 let* expr', r' = _expression r in
                 (match Seq.uncons r' with
                     | Some ((RIGHT_PAREN, _l, _c), r'') -> 
                         Ok (Grouping expr', r'')
-                    | Some ((p, l, c), _r'') -> 
+                    | Some ((_, l, c), _r'') -> 
                         let r''' = perform (Synchronize (r')) in 
-                        Error ((Unhandled (mkperr l c p (Unmatched expr'))), r''')
+                        Error ((Unhandled (Parse, (Unmatched (l, c, expr')))), r''')
                     | _ -> 
                         let r''' = perform (Synchronize (r')) in 
-                        Error ((Unhandled (mkperr l' c' p (Unmatched expr'))), r''')
+                        Error ((Unhandled (Parse, (Unmatched (l', c', expr')))), r''')
                 )
             | t -> 
-                Error ((Unhandled (mkperr l' c' t Unrecognized)), r)
+                Error ((Unhandled (Parse, (Unexpected (l', c', t)))), r)
         )
     | None ->
         Error ((Literal Eol), pseq)
@@ -288,7 +301,7 @@ and primary pseq =
         with 
             (* failover for parse errors *)
             | effect Synchronize (t), k -> 
-                let t'= (Seq.drop_while (fun (p, _l, _c) -> 
+                let t' = (Seq.drop_while (fun (p, _l, _c) -> 
                     match p with
                     | SEMICOLON -> false
                     | FUN       -> false
