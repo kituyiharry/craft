@@ -1,4 +1,4 @@
 (library
  (name craft)
  (preprocess (pps ppx_deriving.show))
- (modules io exec token scanner ast eval))
+ (modules io exec token scanner ast eval env))

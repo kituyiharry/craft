@@ -1,13 +1,22 @@
-open Ast
+open Ast;;
+open Env;;
 
 let (let*) = Result.bind;;
 
-let rec eval = function
-    | Literal  l  -> Ok l
-    | Grouping g  -> eval g
+type craftenv = {
+        prg: source 
+    ;   env: Env.t
+}
+
+let rec eval (env) = function
+    | Literal  l  -> (match l with
+            | (VarIdent n) -> let* g = (Env.get env n) in Ok g
+            | _ -> Ok l
+        )
+    | Grouping g  -> eval env g
     | Unhandled (_t, s) -> Error s
     | Unary (op, u) ->
-        let* u' = eval u in
+        let* u' = eval env u in
         (match op with
             | Negate -> (match u' with
                     | Number f -> (Ok (Number (Float.neg f)))
@@ -19,8 +28,8 @@ let rec eval = function
                 )
         )
     | Binary   (l, op, r) ->
-        let* l' = eval l in
-        let* r' = eval r in
+        let* l' = eval env l in
+        let* r' = eval env r in
         (match op with
             | Compr o -> (match o with
                 | Greater    -> (match (l', r') with
@@ -96,22 +105,23 @@ let mkraw l =
 let eval_exprs (Program {state=el;errs}) =
     let astseq = (List.to_seq el) in
 
-    let rec foldast s tseq =
+    let rec foldast (s, env) tseq =
         (match Seq.uncons tseq with
             | Some ((_ast), more) ->
                 (match _ast with
                 (* newline *)
                 | Stmt (Raw (Eval (Literal Eol)))  ->
-                    foldast s more
-                | Stmt (Raw (Eval e'))  -> (match (eval e') with
+                    foldast (s, env) more
+                | Stmt (Raw (Eval e'))  -> (match (eval env e') with
                     |  Ok o    ->
-                        foldast { s with state = ((mkraw o) :: s.state) } more
+                        foldast ({ s with state = ((mkraw o) :: s.state) }, env) more
                     |  Error err ->
                         (* TODO: pass line and col context too  *)
                         (* FIXME: tokens ?? *)
-                        foldast { s with errs= (Unhandled (Eval, err) :: s.errs) } more
+                        foldast ({ s with errs= (Unhandled (Eval, err) ::
+                        s.errs) }, env) more
                     )
-                | Stmt ((Side (Effect (Print e')))) -> (match (eval e') with
+                | Stmt ((Side (Effect (Print e')))) -> (match (eval env e') with
                     |  Ok o    -> let _ = (match o with
                             | (Bool b) ->
                                 Format.printf "%b\n" b
@@ -125,16 +135,23 @@ let eval_exprs (Program {state=el;errs}) =
                                 (* TODO: runtime error *)
                                 ()
                         ) in
-                        foldast { s with state = ((mkraw o) :: s.state) } more
+                        foldast ({ s with state = ((mkraw o) :: s.state) }, env) more
                     |  Error err ->
-                        foldast { s with errs=(Unhandled (Eval, err) :: s.errs) } more
+                        foldast ({ s with errs=(Unhandled (Eval, err) :: s.errs) }, env) more
                     )
-                | VarDecl _l ->
+                | VarDecl (name, exp) ->
                     (* TODO: handle *)
-                    foldast s more
+                    match eval env exp with
+                    | Ok o ->
+                            foldast (
+                                { s with state = ((mkraw o) :: s.state) }, 
+                                (Env.define name o env)
+                            ) more
+                    | Error err -> 
+                        foldast ({ s with errs = ((Unhandled (Eval, FailedEval err)) :: s.errs) }, env) more
                 )
             | _ ->
-                Program (s)
+                { prg=Program (s); env=env }
         )
-    in foldast { state=[]; errs=errs } astseq
+    in foldast ({ state=[]; errs=errs }, Env.empty) astseq
 ;;

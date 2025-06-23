@@ -40,6 +40,8 @@ and crafterr =
     | EndOfSeq     of string 
     | Unexpected   of int * int * tokentype
     | Unterminated
+    | Undefined    of string
+    | FailedEval   of crafterr
 
 and unary = 
     | Negate 
@@ -267,57 +269,56 @@ and primary pseq =
                     | Some ((RIGHT_PAREN, _l, _c), r'') -> 
                         Ok (Grouping expr', r'')
                     | Some ((_, l, c), _r'') -> 
-                        let r''' = perform (Synchronize (r')) in 
-                        Error ((Unhandled (Parse, (Unmatched (l, c, expr')))), r''')
+                        let r''' = perform (Synchronize r') in 
+                        Error (Unhandled (Parse, Unmatched (l, c, expr')), r''')
                     | _ -> 
-                        let r''' = perform (Synchronize (r')) in 
-                        Error ((Unhandled (Parse, (Unmatched (l', c', expr')))), r''')
+                        let r''' = perform (Synchronize r') in 
+                        Error (Unhandled (Parse, Unmatched (l', c', expr')), r''')
                 )
             | t -> 
-                Error ((Unhandled (Parse, (Unexpected (l', c', t)))), r)
+                Error (Unhandled (Parse, Unexpected (l', c', t)), r)
         )
     | None ->
         Error ((Literal Eol), pseq)
 ;;
 
- let parse tseq = 
+let parse tseq = 
     let rec _parse s ts =
-        try 
-            match  _program ts with
-                | Ok (stmt, more) ->
-                    if Seq.is_empty more then
-                        Ok (Program ({ s with
-                                state = (List.rev (stmt :: s.state))
-                            }
-                        ))
-                    else
-                        (match Seq.uncons more with
-                        | Some ((SEMICOLON, _l', _c'), more') -> 
-                            _parse { s with state=(stmt :: s.state) } more'
-                        | _ ->
-                            _parse { s with state=(stmt :: s.state) } more)
-                | Error (e, more) -> 
-                    _parse { s with errs=(e :: s.errs) } more
-        with 
-            (* failover for parse errors *)
-            | effect Synchronize (t), k -> 
-                let t' = (Seq.drop_while (fun (p, _l, _c) -> 
-                    match p with
-                    | SEMICOLON -> false
-                    | FUN       -> false
-                    | VAR       -> false
-                    | FOR       -> false
-                    | IF        -> false
-                    | WHILE     -> false
-                    | PRINT     -> false
-                    | RETURN    -> false
-                    | _         -> true
-                ) t) in
-                match Seq.uncons t' with
+        match  _program ts with
+        | Ok (stmt, more) ->
+            if Seq.is_empty more then
+                Ok (Program ({ s with
+                    state = (List.rev (stmt :: s.state))
+                }
+                ))
+            else
+                (match Seq.uncons more with
+                    | Some ((SEMICOLON, _l', _c'), more') -> 
+                        _parse { s with state=(stmt :: s.state) } more'
+                    | _ ->
+                        _parse { s with state=(stmt :: s.state) } more)
+        | Error (e, more) -> 
+            _parse { s with errs=(e :: s.errs) } more
+        (* failover for parse errors *)
+        | effect Synchronize (t), k -> 
+            let t' = Seq.drop_while (fun (p, _l, _c) -> 
+                match p with
+                | SEMICOLON -> false
+                | FUN       -> false
+                | VAR       -> false
+                | FOR       -> false
+                | IF        -> false
+                | WHILE     -> false
+                | PRINT     -> false
+                | RETURN    -> false
+                | _         -> true
+            ) t in
+            (match Seq.uncons t' with
                 | Some ((SEMICOLON, _, _), r) ->
                     continue k r
                 | _ -> 
                     continue k t'
+            )
     in _parse { state=[]; errs=[] } tseq
 ;;
 

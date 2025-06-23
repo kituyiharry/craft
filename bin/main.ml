@@ -42,6 +42,10 @@ let runfile fname =
             ) in b')
         )
     |> Craft.Eval.eval_exprs
+    |> function {prg=s; env=e} -> 
+        let _ = Format.print_newline () in
+        let _ = Format.print_string (Craft.Env.Env.show e) in
+        s
     |> Craft.Ast.show_source
     |> function s -> 
         let _ = Format.print_newline () in

@@ -68,7 +68,7 @@ let isAlphaNumeric c =
 ;;
 
 let ht = 
-    let h = Kt.create 20 in
+    let h = Kt.create 15 in
     let _ = [
         ("and"   , AND   );
         ("class" , CLASS );
