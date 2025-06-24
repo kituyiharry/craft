@@ -49,7 +49,12 @@ let rec drop_til_follows p1 p2 xs =
 (* match next token *)
 let next tseq term = 
     match Seq.uncons tseq with
-    | Some ((chr, _pos), more) -> (chr = term, more)
+    | Some ((chr, _pos), more) -> 
+        let ismtch = (chr = term) in
+        if ismtch then
+            (ismtch, more)
+        else
+            (ismtch, tseq)
     | None -> (false, tseq)
 ;;
 

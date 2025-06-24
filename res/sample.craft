@@ -29,4 +29,6 @@ print 2 + 1;
 var x = 33 + 1;
 var y = 1 + 231;
 var hallo = x <= y;
-2333 + 2223;
+print hallo; 
+hallo = !hallo;
+x = x + 2223;

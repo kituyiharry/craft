@@ -10,88 +10,95 @@ type craftenv = {
 
 let rec eval (env) = function
     | Literal  l  -> (match l with
-            | (VarIdent n) -> let* g = (Env.get env n) in Ok g
-            | _ -> Ok l
+            | (VarIdent n) -> let* g = (Env.get env n) in 
+                   Ok (g, env)
+            | _ -> Ok (l, env)
         )
+    | Assign (p, expr) -> 
+        let* (g, env') = eval env expr in 
+        let* env'' = Env.assign env' p g in
+        Ok (g, env'')
     | Grouping g  -> eval env g
     | Unhandled (_t, s) -> Error s
     | Unary (op, u) ->
-        let* u' = eval env u in
+        let* (u', env') = eval env u in
         (match op with
             | Negate -> (match u' with
-                    | Number f -> (Ok (Number (Float.neg f)))
+                    | Number f -> (Ok (Number (Float.neg f), env'))
                     | n -> Error (BadExp (u, Some n))
                 )
             | Invert -> (match u' with
-                    | Bool b -> Ok (Bool (Bool.not b))
+                    | Bool b -> Ok (Bool (Bool.not b), env')
                     | n -> Error (BadExp (u, Some n))
                 )
         )
     | Binary   (l, op, r) ->
-        let* l' = eval env l in
-        let* r' = eval env r in
+        let* (l', env') = eval env  l in
+        let* (r', env') = eval env' r in
         (match op with
             | Compr o -> (match o with
                 | Greater    -> (match (l', r') with
-                    | (Number l'', Number r'') -> Ok (Bool ((Float.compare l'' r'') = 1))
+                    | (Number l'', Number r'') -> 
+                        Ok (Bool ((Float.compare l'' r'') = 1), env')
                     | (x, y) ->
-                        Error (BadMatch (x, op, y))
+                        Error (TypeError (x, op, y))
                     )
                 | GreaterEq -> (match (l', r') with
                     | (Number l'', Number r'') ->
                         let x = Float.compare l'' r'' in
-                        Ok (Bool (x = 1 || x = 0))
+                        Ok (Bool (x = 1 || x = 0), env')
                     | (x, y) ->
-                        Error (BadMatch (x, op, y))
+                        Error (TypeError (x, op, y))
                     )
                 | Lesser -> (match (l', r') with
-                    | (Number l'', Number r'') -> Ok (Bool ((Float.compare l'' r'') = -1))
+                    | (Number l'', Number r'') -> 
+                        Ok (Bool ((Float.compare l'' r'') = -1), env')
                     | (x, y) ->
-                        Error (BadMatch (x, op, y))
+                        Error (TypeError (x, op, y))
                     )
                 | LesserEq -> (match (l', r') with
                     | (Number l', Number r') ->
                         let x = Float.compare l' r' in
-                        Ok (Bool (x = -1 || x = 0))
+                        Ok (Bool (x = -1 || x = 0), env')
                     | (x, y) ->
-                        Error (BadMatch (x, op, y))
+                        Error (TypeError (x, op, y))
                     )
                 )
             | Operator o -> (match o with
                 | Eq    -> (match ( l',  r') with
-                    | (Bool   l'', Bool   r'') -> Ok (Bool ((=) l'' r''))
-                    | (Number l'', Number r'') -> Ok (Bool (Float.equal l'' r''))
+                    | (Bool   l'', Bool   r'') -> Ok (Bool ((=) l'' r''), env')
+                    | (Number l'', Number r'') -> Ok (Bool (Float.equal l'' r''), env')
                     | (x, y) ->
-                        Error (BadMatch (x, op, y))
+                        Error (TypeError (x, op, y))
                     )
                 | NotEq -> (match ( l',  r') with
-                    | (Bool   l'', Bool   r'') -> Ok (Bool ((!=) l'' r''))
-                    | (Number l'', Number r'') -> Ok (Bool (not @@ Float.equal l'' r''))
+                    | (Bool   l'', Bool   r'') -> Ok (Bool ((!=) l'' r''), env')
+                    | (Number l'', Number r'') -> Ok (Bool (not @@ Float.equal l'' r''), env')
                     | (x, y) ->
-                        Error (BadMatch (x, op, y))
+                        Error (TypeError (x, op, y))
                     )
                 )
             | Term     t -> (match ( l',  r') with
                     | (Number l'', Number r'') -> (match t with
-                        | Add -> Ok (Number (Float.add l'' r''))
-                        | Sub -> Ok (Number (Float.sub l'' r''))
+                        | Add -> Ok (Number (Float.add l'' r''), env')
+                        | Sub -> Ok (Number (Float.sub l'' r''), env')
                         )
                     | (String l'', String r'') -> (match t with
-                        | Add -> Ok (String (String.cat l'' r''))
+                        | Add -> Ok (String (String.cat l'' r''), env')
                         | _ ->   Error (BadOp (l', op, r'))
                         )
                     | (x, y) ->
-                        Error (BadMatch (x, op, y))
+                        Error (TypeError (x, op, y))
                 )
             | Factor   f -> (match ( l',  r') with
                     | (Number _, Number (0.)) ->
                         Error (BadOp (l', op, r'))
                     | (Number l'', Number r'') -> (match f with
-                        | Div -> Ok (Number (Float.div l'' r''))
-                        | Mul -> Ok (Number (Float.mul l'' r''))
+                        | Div -> Ok (Number (Float.div l'' r''), env')
+                        | Mul -> Ok (Number (Float.mul l'' r''), env')
                         )
                     | (x, y) ->
-                        Error (BadMatch (x, op, y))
+                        Error (TypeError (x, op, y))
                 )
             | n -> Error (BadExp (n, None))
         )
@@ -113,8 +120,8 @@ let eval_exprs (Program {state=el;errs}) =
                 | Stmt (Raw (Eval (Literal Eol)))  ->
                     foldast (s, env) more
                 | Stmt (Raw (Eval e'))  -> (match (eval env e') with
-                    |  Ok o    ->
-                        foldast ({ s with state = ((mkraw o) :: s.state) }, env) more
+                    |  Ok (o, env')    ->
+                        foldast ({ s with state = ((mkraw o) :: s.state) }, env') more
                     |  Error err ->
                         (* TODO: pass line and col context too  *)
                         (* FIXME: tokens ?? *)
@@ -122,7 +129,7 @@ let eval_exprs (Program {state=el;errs}) =
                         s.errs) }, env) more
                     )
                 | Stmt ((Side (Effect (Print e')))) -> (match (eval env e') with
-                    |  Ok o    -> let _ = (match o with
+                    |  Ok (o, env')    -> let _ = (match o with
                             | (Bool b) ->
                                 Format.printf "%b\n" b
                             | (Number n) ->
@@ -135,17 +142,17 @@ let eval_exprs (Program {state=el;errs}) =
                                 (* TODO: runtime error *)
                                 ()
                         ) in
-                        foldast ({ s with state = ((mkraw o) :: s.state) }, env) more
+                        foldast ({ s with state = ((mkraw o) :: s.state) }, env') more
                     |  Error err ->
                         foldast ({ s with errs=(Unhandled (Eval, err) :: s.errs) }, env) more
                     )
                 | VarDecl (name, exp) ->
                     (* TODO: handle *)
                     match eval env exp with
-                    | Ok o ->
+                    | Ok (o, env') ->
                             foldast (
                                 { s with state = ((mkraw o) :: s.state) }, 
-                                (Env.define name o env)
+                                (Env.define name o env')
                             ) more
                     | Error err -> 
                         foldast ({ s with errs = ((Unhandled (Eval, FailedEval err)) :: s.errs) }, env) more

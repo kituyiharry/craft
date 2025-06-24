@@ -35,12 +35,13 @@ and context = {
 and crafterr = 
     | Unmatched    of int * int * expr 
     | BadExp       of expr * (lit option)
-    | BadMatch     of lit * expr * lit 
+    | TypeError    of lit * expr * lit 
     | BadOp        of lit * expr * lit
     | EndOfSeq     of string 
     | Unexpected   of int * int * tokentype
     | Unterminated
     | Undefined    of string
+    | Incomplete   of string * expr
     | FailedEval   of crafterr
 
 and unary = 
@@ -74,6 +75,7 @@ and expr =
     | Unary     of unary * expr
     | Binary    of expr * expr * expr
     | Grouping  of expr 
+    | Assign    of string * expr
     | Unhandled of stage * crafterr (* line-ast token line col *)
 
 and builtin = 
@@ -105,8 +107,31 @@ let rec _program tseq =
         _printstmt tseq'
     | Some(((VAR), _, _), tseq') -> 
         _vardecl tseq'
+    | Some ((IDENTIFIER _ident, _, _), _) ->
+        _assign tseq
     | _ -> 
         _express tseq
+
+and _assign aseq = 
+    let* (ast', ts') = _assignment aseq in
+    Ok ((Stmt (Raw (Eval ast'))), ts')
+
+and _assignment aseq = 
+    let* (exp, rem) = _expression aseq in
+
+    (match Seq.uncons rem with
+        | Some(((EQUAL), _, _), aseq') -> 
+            let* (exp', rem') = _assignment aseq' in 
+            (match exp with
+                | Literal (VarIdent n) -> 
+                    Ok ((Assign (n, exp')), rem')
+                | Literal _n as l -> 
+                    Ok (l, rem')
+                | _ -> 
+                    Error (Unhandled (Parse, Incomplete ("invalid assignment", exp')), rem'))
+        | _ -> 
+            Ok (exp, rem)
+    )
 
 and _express eseq = 
     let* (ast', ts') = _expression eseq in 

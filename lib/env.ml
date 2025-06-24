@@ -18,6 +18,13 @@ module Env = struct
         | _ -> Error (Ast.Undefined name)
     ;;
 
+    let assign env name value = 
+        if ValEnv.mem name env then 
+            Ok (ValEnv.add name value env)
+        else
+            Error (Ast.Undefined name)
+    ;;
+
     let show env = 
         let sb = Buffer.create 100 in 
         let _ = Buffer.add_string sb "Env => { \n" in
