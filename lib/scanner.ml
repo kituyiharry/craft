@@ -152,7 +152,8 @@ let parse_token tok lseqst cseqst =
                             let (x, y, z) = perform (SkipAcross (
                                 lseqst, 
                                 (fun (l,_)-> 
-                                    let x, y = drop_til_follows notstar notslash (Seq.zip (String.to_seq l) (Seq.ints 0))
+                                    let ntoks = (Seq.zip (String.to_seq l) (Seq.ints 0)) in
+                                    let x, y = drop_til_follows notstar notslash ntoks
                                     in x, (fun () -> y)
                                 )
                             )) in

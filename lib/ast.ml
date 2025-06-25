@@ -33,7 +33,7 @@ and context = {
 }
 
 and crafterr = 
-    | Unmatched    of int * int * expr 
+    | Unmatched    of int * int * tokentype
     | BadExp       of expr * (lit option)
     | TypeError    of lit * expr * lit 
     | BadOp        of lit * expr * lit
@@ -42,7 +42,6 @@ and crafterr =
     | Unterminated
     | Undefined    of string
     | Incomplete   of string * expr
-    | FailedEval   of crafterr
 
 and unary = 
     | Negate 
@@ -88,12 +87,13 @@ and apply =
     | Effect of builtin
 
 and stmt  = 
-    | Raw  of exprst
-    | Side of apply
+    | Raw   of exprst
+    | Side  of apply
 
 and declaration = 
     | VarDecl of (string * expr)
     | Stmt    of stmt
+    | Block   of declaration list
 
 and source = 
     | Program of context
@@ -107,10 +107,30 @@ let rec _program tseq =
         _printstmt tseq'
     | Some(((VAR), _, _), tseq') -> 
         _vardecl tseq'
+    | Some (((LEFT_BRACE), l, c), tseq') -> 
+        let _ = Format.printf "started block!\n" in
+        _blockstmts (l, c) [] tseq'
     | Some ((IDENTIFIER _ident, _, _), _) ->
         _assign tseq
     | _ -> 
         _express tseq
+
+and _blockstmts (l, c) stmts bseq =
+    match Seq.uncons bseq with
+    | Some ((RIGHT_BRACE, _, _), more) -> 
+        Ok (Block (List.rev stmts), more)
+    | Some ((SEMICOLON, l, c), more) -> 
+        _blockstmts (l, c) stmts more
+    | Some ((_, _, _), _) ->
+        let* (exp, more') = _program bseq in 
+        (match Seq.uncons more' with
+            | Some ((_, l, c), _) -> 
+                _blockstmts (l, c) (exp :: stmts) more'
+            | _ -> 
+                _blockstmts (l, c) (exp :: stmts) more'
+        )
+    | _ -> 
+        Error (Unhandled (Parse, (Unmatched (l, c, RIGHT_BRACE))), bseq)
 
 and _assign aseq = 
     let* (ast', ts') = _assignment aseq in
@@ -295,10 +315,10 @@ and primary pseq =
                         Ok (Grouping expr', r'')
                     | Some ((_, l, c), _r'') -> 
                         let r''' = perform (Synchronize r') in 
-                        Error (Unhandled (Parse, Unmatched (l, c, expr')), r''')
+                        Error (Unhandled (Parse, Unmatched (l, c, RIGHT_PAREN)), r''')
                     | _ -> 
                         let r''' = perform (Synchronize r') in 
-                        Error (Unhandled (Parse, Unmatched (l', c', expr')), r''')
+                        Error (Unhandled (Parse, Unmatched (l', c', RIGHT_PAREN)), r''')
                 )
             | t -> 
                 Error (Unhandled (Parse, Unexpected (l', c', t)), r)

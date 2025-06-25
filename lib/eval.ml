@@ -16,7 +16,7 @@ let rec eval (env) = function
         )
     | Assign (p, expr) -> 
         let* (g, env') = eval env expr in 
-        let* env'' = Env.assign env' p g in
+        let*     env'' = Env.assign env' p g in
         Ok (g, env'')
     | Grouping g  -> eval env g
     | Unhandled (_t, s) -> Error s
@@ -147,15 +147,19 @@ let eval_exprs (Program {state=el;errs}) =
                         foldast ({ s with errs=(Unhandled (Eval, err) :: s.errs) }, env) more
                     )
                 | VarDecl (name, exp) ->
-                    (* TODO: handle *)
-                    match eval env exp with
+                    (match eval env exp with
                     | Ok (o, env') ->
                             foldast (
                                 { s with state = ((mkraw o) :: s.state) }, 
                                 (Env.define name o env')
                             ) more
                     | Error err -> 
-                        foldast ({ s with errs = ((Unhandled (Eval, FailedEval err)) :: s.errs) }, env) more
+                        foldast ({ s with errs = ((Unhandled (Eval, err)) :: s.errs) }, env) more)
+                | Block (stmts) ->
+                    let env' = { Env.empty with par=(Some env) } in 
+                    let {env;prg=(Program t)} = foldast ({ state=[]; errs=[] }, env') (List.to_seq stmts) in
+                    let oenv = Option.get env.par in
+                    foldast (({ state=(s.state @ t.state); errs=(s.errs @ t.errs) }), oenv) more
                 )
             | _ ->
                 { prg=Program (s); env=env }

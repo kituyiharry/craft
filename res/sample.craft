@@ -31,4 +31,15 @@ var y = 1 + 231;
 var hallo = x <= y;
 print hallo; 
 hallo = !hallo;
-x = x + 2223;
+{ 
+    var x = 122 + 2223; 
+    print "x is ";
+    print x;
+    {
+        x = -1;
+        print "now x is";
+        print x;
+    }
+}
+print "and now x is";
+print x;
