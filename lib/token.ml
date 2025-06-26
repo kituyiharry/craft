@@ -35,6 +35,7 @@ type tokentype =
     | NIL
     | OR
     | PRINT
+    | PRINTLN
     | RETURN
     | SUPER
     | THIS

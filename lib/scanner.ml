@@ -85,6 +85,7 @@ let ht =
         ("nil"   , NIL   );
         ("or"    , OR    );
         ("print" , PRINT );
+        ("printl", PRINTLN );
         ("return", RETURN);
         ("super" , SUPER );
         ("this"  , THIS  );

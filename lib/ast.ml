@@ -35,6 +35,7 @@ and context = {
 and crafterr = 
     | Unmatched    of int * int * tokentype
     | BadExp       of expr * (lit option)
+    | BadCond      of expr * (lit option)
     | TypeError    of lit * expr * lit 
     | BadOp        of lit * expr * lit
     | EndOfSeq     of string 
@@ -65,6 +66,10 @@ and equality =
     | Eq 
     | NotEq 
 
+and logical = 
+    | And
+    | Or
+
 and expr =
     | Literal   of lit
     | Factor    of factor
@@ -74,11 +79,13 @@ and expr =
     | Unary     of unary * expr
     | Binary    of expr * expr * expr
     | Grouping  of expr 
+    | Logic     of logical
     | Assign    of string * expr
     | Unhandled of stage * crafterr (* line-ast token line col *)
 
 and builtin = 
     | Print of expr
+    | Println of expr
 
 and exprst = 
     | Eval of expr
@@ -90,10 +97,14 @@ and stmt  =
     | Raw   of exprst
     | Side  of apply
 
+and branch = 
+    | If of (expr * declaration * declaration option)
+
 and declaration = 
     | VarDecl of (string * expr)
     | Stmt    of stmt
     | Block   of declaration list
+    | Branch  of branch
 
 and source = 
     | Program of context
@@ -105,15 +116,41 @@ let rec _program tseq =
     match Seq.uncons tseq with
     | Some(((PRINT), _, _), tseq') -> 
         _printstmt tseq'
+    | Some(((PRINTLN), _, _), tseq') -> 
+        _printlnstmt tseq'
     | Some(((VAR), _, _), tseq') -> 
         _vardecl tseq'
     | Some (((LEFT_BRACE), l, c), tseq') -> 
-        let _ = Format.printf "started block!\n" in
         _blockstmts (l, c) [] tseq'
+    | Some (((IF), l, c), tseq') -> 
+        _ifstmts (l, c) tseq'
     | Some ((IDENTIFIER _ident, _, _), _) ->
         _assign tseq
     | _ -> 
         _express tseq
+
+and _ifstmts (l, c) ifseq = 
+
+    match Seq.uncons ifseq with
+    | Some ((LEFT_PAREN, l, c), more) -> 
+        let* (exp, more') = _expression more in
+        (match Seq.uncons more' with
+        | Some ((RIGHT_PAREN, _, _), left) -> 
+            let* (thenbr, left') = _program left in 
+            (match Seq.uncons left' with
+                | Some ((ELSE, _, _), more) -> 
+                    let* (elsebr, left'') = _program more in 
+                    Ok (Branch (If (exp, thenbr, Some elsebr)), left'')
+                | _ -> 
+                    Ok (Branch (If (exp, thenbr, None)), left')
+            )
+        | _ ->
+            Error (Unhandled (Parse, (Unexpected (l, c, RIGHT_PAREN))), ifseq)
+        )
+    | Some ((_, l,c), _) -> 
+        Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), ifseq)
+    | _ -> 
+        Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), ifseq)
 
 and _blockstmts (l, c) stmts bseq =
     match Seq.uncons bseq with
@@ -161,6 +198,10 @@ and _printstmt pseq =
     let* (ast', ts') = _expression pseq in 
     Ok (Stmt (Side (Effect (Print ast'))), ts')
 
+and _printlnstmt pseq =
+    let* (ast', ts') = _expression pseq in 
+    Ok (Stmt (Side (Effect (Println ast'))), ts')
+
 and _vardecl vseq = 
 
     match Seq.uncons vseq with
@@ -182,7 +223,50 @@ and _vardecl vseq =
         Error ((Unhandled (Parse, EndOfSeq e)), vseq)
 
 and _expression exseq' = 
-    _equality exseq'
+    _logical exseq'
+
+and _logical lseq' =
+    _logicalor lseq'
+
+and _logicalor oseq' =
+
+    let* (lexpr, tseq'') = _logicaland oseq' in 
+
+    let rec check l_expr ts = 
+        match Seq.uncons ts with
+        | Some ((p, _l, _c), r) ->
+            (match p with
+                | OR  -> 
+                    let* r_expr, _ts' = _logicaland r in
+                    let l_expr' = (Binary (l_expr, (Logic Or), r_expr)) 
+                    in check l_expr' _ts' 
+                | _ -> 
+                    Ok (l_expr, ts)
+            )
+        | None ->
+            Ok (l_expr, ts)
+    in check lexpr tseq'' 
+
+
+and _logicaland aseq' =
+
+    let* (lexpr, tseq'') = _equality aseq' in 
+
+    let rec check l_expr ts = 
+        match Seq.uncons ts with
+        | Some ((p, _l, _c), r) ->
+            (match p with
+                | AND  -> 
+                    let* r_expr, _ts' = _equality r in
+                    let l_expr' = (Binary (l_expr, (Logic And), r_expr)) 
+                    in check l_expr' _ts' 
+                | _ -> 
+                    Ok (l_expr, ts)
+            )
+        | None ->
+            Ok (l_expr, ts)
+
+    in check lexpr tseq'' 
 
 and _equality tseq' = 
     let* (lexpr, tseq'') = _comp tseq' in 
@@ -334,8 +418,7 @@ let parse tseq =
             if Seq.is_empty more then
                 Ok (Program ({ s with
                     state = (List.rev (stmt :: s.state))
-                }
-                ))
+                }))
             else
                 (match Seq.uncons more with
                     | Some ((SEMICOLON, _l', _c'), more') -> 

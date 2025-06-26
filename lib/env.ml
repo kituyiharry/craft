@@ -38,6 +38,14 @@ module Env = struct
             | _ -> Error (Ast.Undefined name))
     ;;
 
+    let spawn env' = 
+        { (empty) with par=(Some env') }
+    ;;
+
+    let parent {par;_} = 
+        Option.get par 
+    ;;
+
     let show env = 
 
         let rec inshow tabcount env = 
