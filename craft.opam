@@ -12,6 +12,7 @@ bug-reports: "https://github.com/username/reponame/issues"
 depends: [
   "dune" {>= "3.18"}
   "ocaml"
+  "ppx_deriving"
   "odoc" {with-doc}
 ]
 build: [

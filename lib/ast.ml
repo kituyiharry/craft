@@ -7,7 +7,10 @@ open Token;;
 
 let (let*) = Result.bind
 
-type tokseq = (tokentype * int * int ) Seq.t 
+type linenum = int 
+type colmnum = int 
+
+type tokseq = (tokentype * linenum * colmnum) Seq.t 
 
 type _ Effect.t += 
     | Synchronize: tokseq -> tokseq Effect.t
@@ -28,7 +31,7 @@ type lit =
     | VarIdent of string
 
 and context = {
-      state: declaration list 
+      state: decl list 
     ; errs : expr list
 }
 
@@ -98,13 +101,17 @@ and stmt  =
     | Side  of apply
 
 and branch = 
-    | If of (expr * declaration * declaration option)
+    | If of (expr * decl * decl option)
 
-and declaration = 
+and loop = 
+    | While of (expr * decl)
+
+and decl = 
     | VarDecl of (string * expr)
     | Stmt    of stmt
-    | Block   of declaration list
+    | Block   of decl list
     | Branch  of branch
+    | Loop    of loop
 
 and source = 
     | Program of context
@@ -124,10 +131,31 @@ let rec _program tseq =
         _blockstmts (l, c) [] tseq'
     | Some (((IF), l, c), tseq') -> 
         _ifstmts (l, c) tseq'
+    | Some (((WHILE), l, c), tseq') -> 
+        _whilestmt (l, c) tseq'
     | Some ((IDENTIFIER _ident, _, _), _) ->
         _assign tseq
     | _ -> 
         _express tseq
+
+and _whilestmt (l, c) ifseq = 
+
+    match Seq.uncons ifseq with
+    | Some ((LEFT_PAREN, l, c), more) -> 
+        let* (exp, more') = _expression more in
+        (match Seq.uncons more' with
+        | Some ((RIGHT_PAREN, _, _), left) -> 
+            let* (loopbr, left') = _program left in 
+            Ok (Loop (While (exp, loopbr)), left')
+        | _ ->
+            Error (Unhandled (Parse, (Unexpected (l, c, RIGHT_PAREN))), ifseq)
+        )
+    | Some ((_, l,c), _) -> 
+        Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), ifseq)
+    | _ -> 
+        Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), ifseq)
+
+
 
 and _ifstmts (l, c) ifseq = 
 

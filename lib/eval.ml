@@ -129,7 +129,7 @@ let rec eval (env) = function
                                     let* (r', env') = eval env' r in
                                     Ok (r', env') 
                         )
-                    | (x ) ->
+                    | (x) ->
                         Error (BadCond (l, Some x))
             )
             | n -> Error (BadExp (n, None))
@@ -234,6 +234,26 @@ let eval_exprs (Program {state=el;errs}) =
                             let err = Unhandled (Eval, err)  in
                             foldast ({ s  with errs = (err :: s.errs) }, env) more
                     )
+                | Loop (While (exp, loopblk)) ->
+                    let rec loop (s, env) =
+                        (match eval env exp with
+                            | Ok ((Bool b), env') -> 
+                                (* can be optimized *)
+                                if b then
+                                    let env'' = Env.spawn env' in 
+                                    let {env;prg=(Program t)} = foldast ({ state=[]; errs=[] }, env'') (Seq.return loopblk) in
+                                    let oenv = Env.parent env in
+                                    loop (({ state=(s.state @ t.state); errs=(s.errs @ t.errs) }), oenv)
+                                else
+                                    foldast (s, env') more
+                            | Ok (l, env) ->
+                                let err = Unhandled (Eval, BadCond(exp, Some l))  in
+                                foldast ({ s  with errs = (err :: s.errs) }, env) more
+                            | Error err ->
+                                let err = Unhandled (Eval, err)  in
+                                foldast ({ s  with errs = (err :: s.errs) }, env) more
+                        )
+                    in loop (s, env)
                 )
             | _ ->
                 { prg=Program (s); env=env }
