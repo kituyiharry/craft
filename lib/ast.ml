@@ -43,9 +43,9 @@ and crafterr =
     | BadOp        of lit * expr * lit
     | EndOfSeq     of string 
     | Unexpected   of int * int * tokentype
-    | Unterminated
     | Undefined    of string
     | Incomplete   of string * expr
+    | Unterminated
 
 and unary = 
     | Negate 
@@ -103,15 +103,20 @@ and stmt  =
 and branch = 
     | If of (expr * decl * decl option)
 
-and loop = 
-    | While of (expr * decl)
-
 and decl = 
     | VarDecl of (string * expr)
     | Stmt    of stmt
     | Block   of decl list
     | Branch  of branch
     | Loop    of loop
+
+and loopinit = 
+    | LoopDecl of (string * expr)
+    | LoopStmt of expr
+
+and loop = 
+    | While of (expr * decl)
+    | For   of (loopinit * expr * expr * decl)
 
 and source = 
     | Program of context
@@ -133,10 +138,68 @@ let rec _program tseq =
         _ifstmts (l, c) tseq'
     | Some (((WHILE), l, c), tseq') -> 
         _whilestmt (l, c) tseq'
+    | Some (((FOR), l, c), tseq') -> 
+        _forstmt (l, c) tseq'
     | Some ((IDENTIFIER _ident, _, _), _) ->
         _assign tseq
     | _ -> 
         _express tseq
+
+and _forstmt (l, c) fseq =
+
+    match Seq.uncons fseq with
+    | Some ((LEFT_PAREN, l, c), more) -> 
+        let* (exp, more') = _program more in
+        (match exp with
+            | VarDecl dcl -> 
+                (match Seq.uncons more' with
+                    | Some ((SEMICOLON, l, c), rem) -> 
+                        let* (exp, rem') = _expression rem in
+                        (match Seq.uncons rem' with 
+                            | Some ((SEMICOLON, _l, _c), rem'') -> 
+                                let* (asg, rem''') = _assignment rem'' in
+                                (match Seq.uncons rem''' with
+                                    | Some ((RIGHT_PAREN, _l, _c), fin) -> 
+                                        let* (loopblk, fin) = _program fin in
+                                        let _forstmt = (For ((LoopDecl dcl), exp, asg, loopblk)) in
+                                        Ok (Loop _forstmt, fin)
+                                    | _ -> 
+                                        Error (Unhandled (Parse, (Unexpected (l, c, SEMICOLON))), fseq)
+                                )
+                            | _ ->
+                                Error (Unhandled (Parse, (Unexpected (l, c, SEMICOLON))), fseq)
+                        )
+                    | _ ->
+                        Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), fseq)
+                )
+            | Stmt (Raw (Eval evl)) ->
+                (match Seq.uncons more' with
+                    | Some ((SEMICOLON, l, c), rem) -> 
+                        let* (exp, rem') = _expression rem in
+                        (match Seq.uncons rem' with 
+                            | Some ((SEMICOLON, _l, _c), rem'') -> 
+                                let* (asg, rem''') = _assignment rem'' in
+                                (match Seq.uncons rem''' with
+                                    | Some ((RIGHT_PAREN, _l, _c), fin) -> 
+                                        let* (loopblk, fin) = _program fin in
+                                        let _forstmt = (For ((LoopStmt evl), exp, asg, loopblk)) in
+                                        Ok (Loop _forstmt, fin)
+                                    | _ -> 
+                                        Error (Unhandled (Parse, (Unexpected (l, c, SEMICOLON))), fseq)
+                                )
+                            | _ ->
+                                Error (Unhandled (Parse, (Unexpected (l, c, SEMICOLON))), fseq)
+                        )
+                    | _ ->
+                        Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), fseq)
+                )
+            | _ -> 
+                Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), fseq)
+        )
+    | Some ((_, l,c), _) -> 
+        Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), fseq)
+    | _ -> 
+        Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), fseq)
 
 and _whilestmt (l, c) ifseq = 
 
@@ -148,14 +211,12 @@ and _whilestmt (l, c) ifseq =
             let* (loopbr, left') = _program left in 
             Ok (Loop (While (exp, loopbr)), left')
         | _ ->
-            Error (Unhandled (Parse, (Unexpected (l, c, RIGHT_PAREN))), ifseq)
+            Error (Unhandled (Parse, (Unmatched (l, c, RIGHT_PAREN))), ifseq)
         )
     | Some ((_, l,c), _) -> 
         Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), ifseq)
     | _ -> 
         Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), ifseq)
-
-
 
 and _ifstmts (l, c) ifseq = 
 

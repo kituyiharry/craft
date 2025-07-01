@@ -12,31 +12,31 @@
 // {
 //     x + x * 1 mod 2
 // };
-( 500 - 100 * 11 ) / 12;
-printl ( -10 );
-(9 - (1 * (-9))) + 11.34;
-9 + 1;
-10 - 10;
-2 * 2; 
-4 / 4;
-500 / 0;
-true != false;
-100 == (99 + 1);
-printl "one"; printl true;
-printl "Hallo " + "World"; 
-printl 2 + 1; 
-var x = 1;
-var y = 1 + 231;
-var hallo = x <= y;
-printl hallo; 
-hallo = !hallo;
-
-if ((hallo and x > 0) or (y < 1)) { 
-    printl "x is greater than 0";
-} else { 
-    printl "x is less than 0";
-}
-
+// ( 500 - 100 * 11 ) / 12;
+// printl ( -10 );
+// (9 - (1 * (-9))) + 11.34;
+// 9 + 1;
+// 10 - 10;
+// 2 * 2; 
+// 4 / 4;
+// 500 / 0;
+// true != false;
+// 100 == (99 + 1);
+// printl "one"; printl true;
+// printl "Hallo " + "World"; 
+// printl 2 + 1; 
+// var x = 1;
+// var y = 1 + 231;
+// var hallo = x <= y;
+// printl hallo; 
+// hallo = !hallo;
+// 
+// if ((hallo and x > 0) or (y < 1)) { 
+//     printl "x is greater than 0";
+// } else { 
+//     printl "x is less than 0";
+// }
+// 
 var n = 10;
 
 while (n >= 1)
@@ -46,18 +46,28 @@ while (n >= 1)
     n = n - 1;
 };
 
-{
-    if (x > 0) { 
-        var x = x + 2223; 
-    }
-    print "x is ";
-    printl x;
-    {
-        x = x - 1;
-        print "now x is ";
-        printl x;
-    };
-};
 
-print "and now x is ";
-printl x;
+printl "-----------------------------------";
+for (var i = 0; i < 10; i = i + 1) printl i;
+printl "-----------------------------------";
+
+for (n = 0; n < 3; n = n + 1) {
+    print "n squared is ";
+    printl (n * n);
+}
+
+// {
+//     if (x > 0) { 
+//         var x = x + 2223; 
+//     }
+//     print "x is ";
+//     printl x;
+//     {
+//         x = x - 1;
+//         print "now x is ";
+//         printl x;
+//     };
+// };
+// 
+// print "and now x is ";
+// printl x;

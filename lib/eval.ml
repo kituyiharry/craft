@@ -101,8 +101,6 @@ let rec eval (env) = function
                 let* (l', env') = eval env  l in
                 let* (r', env') = eval env' r in
                 (match ( l',  r') with
-                    | (Number _, Number (0.)) ->
-                        Error (BadOp (l', op, r'))
                     | (Number l'', Number r'') -> (match f with
                         | Div -> Ok (Number (Float.div l'' r''), env')
                         | Mul -> Ok (Number (Float.mul l'' r''), env')
@@ -254,6 +252,54 @@ let eval_exprs (Program {state=el;errs}) =
                                 foldast ({ s  with errs = (err :: s.errs) }, env) more
                         )
                     in loop (s, env)
+                | Loop (For (init, _condn, _assgn, _blck)) ->
+
+                    let env' = Env.spawn env in
+                    let blk  = Seq.return _blck in
+
+                    let rec check (s, env) = 
+                        match eval env _condn with
+                        | Ok ((Bool b), env') -> 
+                            if b then
+                                let {env=env';prg=(Program s')} = foldast (s, env) blk in
+                                (match eval env' _assgn with
+                                    | Ok (p, env'') -> 
+                                        check ({ s' with state=((mkraw p) :: s'.state) }, env'')
+                                    | Error err -> 
+                                        let err = Unhandled (Eval, err)  in
+                                        ({ s' with errs=(err :: s'.errs) }, env')
+                                )
+                            else
+                                (s, env')
+                        | Ok (l, env') ->
+                            let err = Unhandled (Eval, BadCond (_condn, Some l)) in
+                            ({ s with errs = (err :: s.errs) }, env')
+                        | Error err -> 
+                            let err = Unhandled (Eval, err)  in
+                            ({ s with errs = (err :: s.errs) }, env')
+                    in 
+
+                    match init with
+                    | LoopDecl (name, exp) ->
+                        (match eval env' exp with
+                            | Ok (o, env') ->
+
+                                let s'   = { s with state = ((mkraw o) :: s.state) } in 
+                                let env' = Env.define name o env' in
+                                let (s'', env'') = check (s', env') in
+
+                                foldast ({ state=(s'.state @ s''.state); errs=(s''.errs @ s'.errs) }, Env.parent env'')  more
+
+                            | Error err -> 
+                                foldast ({ s with errs = ((Unhandled (Eval, err)) :: s.errs) }, env) more
+                        )
+                    | LoopStmt _st ->
+                        match eval env' _st with
+                        | Ok (o, env') -> 
+                            let (s'', env'') = check ({ s with state = ((mkraw o) :: s.state) }, env') in
+                            foldast ({ state=(s.state @ s''.state); errs=(s''.errs @ s.errs) }, Env.parent env'')  more
+                        | Error err -> 
+                            foldast ({ s with errs = ((Unhandled (Eval, err)) :: s.errs) }, env) more
                 )
             | _ ->
                 { prg=Program (s); env=env }
