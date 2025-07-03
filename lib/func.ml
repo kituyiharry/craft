@@ -8,7 +8,7 @@ type funcobj = {
     ;   envr: Env.t       (* Environment    *)
     ;   argl: lit list    (* argument list  *)
     ;   arty: int         (* function arity *)
-    ;   blck: decl option (* declaration *)
+    ;   blck: decl option (* declaration    *)
 };;
 
 module Func = struct 
