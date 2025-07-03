@@ -1,5 +1,6 @@
 open Ast;;
 open Env;;
+open Func;;
 
 let (let*) = Result.bind;;
 
@@ -18,8 +19,20 @@ let rec eval (env) = function
         let* (g, env') = eval env expr in 
         let*     env'' = Env.assign env' p g in
         Ok (g, env'')
-    | Grouping g  -> eval env g
+    | Grouping g -> eval env g
     | Unhandled (_t, s) -> Error s
+    | Call (_args, _ident, _arity) -> 
+        (* resolve all arguments in case they are expressions *)
+        let* (_args', _env') = List.fold_left (fun call ex ->
+            (match call with 
+                | (Ok (args, env')) -> 
+                    let* (g', env'') = eval env' ex in
+                    Ok ((g' :: args), env'')
+                | e -> e
+            )
+        ) (Ok ([], env)) _args in
+        let _args' = List.rev (_args') in
+        Func.call (eval) { func=_ident;arty=_arity;envr=_env';argl=_args'; blck=None }
     | Unary (op, u) ->
         let* (u', env') = eval env u in
         (match op with
@@ -304,5 +317,8 @@ let eval_exprs (Program {state=el;errs}) =
             | _ ->
                 { prg=Program (s); env=env }
         )
-    in foldast ({ state=[]; errs=errs }, Env.empty) astseq
+    in 
+    let env = Env.define "clock" (FunImpl (0, Native.clock)) Env.empty in
+
+    foldast ({ state=[]; errs=errs }, env) astseq
 ;;

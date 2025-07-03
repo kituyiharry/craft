@@ -1,15 +1,9 @@
+open Ast;;
 let (let*) = Result.bind;;
 
 module Env = struct 
 
-    module ValEnv = Map.Make (String);;
-
-    type craftenv = {
-            env: Ast.lit ValEnv.t
-        ;   par: craftenv option
-    };; 
-
-    type t = craftenv;; 
+   type t = Ast.craftenv;; 
 
     let empty = { env=ValEnv.empty; par=None; };;
 

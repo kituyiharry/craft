@@ -6,9 +6,10 @@ open Effect.Deep;;
 open Token;;
 
 let (let*) = Result.bind
+let _MaxArgs = 255 (* maximum number of arguments in a function call *)
 
-type linenum = int 
-type colmnum = int 
+type linenum = int [@@deriving show]
+type colmnum = int [@@deriving show] 
 
 type tokseq = (tokentype * linenum * colmnum) Seq.t 
 
@@ -22,13 +23,22 @@ type stage =
     | Eval 
 [@@deriving show];;
 
-type lit = 
+
+module ValEnv = Map.Make (String);;
+
+type craftenv = {
+        env: lit ValEnv.t [@opaque]
+    ;   par: craftenv option
+} and
+
+lit = 
     | Eol
     | Nil
     | Bool     of bool
     | Number   of float
     | String   of string
     | VarIdent of string
+    | FunImpl  of (int * (craftenv -> lit list -> decl option -> ((lit * craftenv), crafterr) result))
 
 and context = {
       state: decl list 
@@ -36,7 +46,7 @@ and context = {
 }
 
 and crafterr = 
-    | Unmatched    of int * int * tokentype
+    | Unmatched    of linenum * colmnum * tokentype
     | BadExp       of expr * (lit option)
     | BadCond      of expr * (lit option)
     | TypeError    of lit * expr * lit 
@@ -45,6 +55,10 @@ and crafterr =
     | Unexpected   of int * int * tokentype
     | Undefined    of string
     | Incomplete   of string * expr
+    | MaxArgs      of linenum * colmnum * string
+    | UnCallable   of expr
+    | Unimplmnted  of expr
+    | ArgMismatch  of string * int * int (* arity mismatch *)
     | Unterminated
 
 and unary = 
@@ -85,6 +99,7 @@ and expr =
     | Logic     of logical
     | Assign    of string * expr
     | Unhandled of stage * crafterr (* line-ast token line col *)
+    | Call      of expr list * string * int 
 
 and builtin = 
     | Print of expr
@@ -147,6 +162,7 @@ let rec _program tseq =
 
 and _forstmt (l, c) fseq =
 
+    (* NB: can also be desugared into a while loop  *)
     match Seq.uncons fseq with
     | Some ((LEFT_PAREN, l, c), more) -> 
         let* (exp, more') = _program more in
@@ -299,6 +315,8 @@ and _vardecl vseq =
             | Some(((EQUAL), _, _), tseq'') -> 
                 let* (ast, ts) = _expression tseq'' in 
                 Ok (VarDecl (ident, ast), ts)
+            | Some ((SEMICOLON, _l, _c), tseq'') -> 
+                Ok (VarDecl (ident, (Literal Nil)), tseq'')
             | Some ((t, l, c), tseq'') -> 
                 Error ((Unhandled (Parse, (Unexpected (l, c, t)))), tseq'')
             | _ -> 
@@ -465,11 +483,50 @@ and _unary useq =
                 let* r_expr, _ts' = _unary r in
                 Ok (Unary (Negate, r_expr), _ts')
             | _ -> 
-                primary useq
+                call useq
         )
     | None ->
         Ok (Literal Eol, useq)
     ) 
+
+and call cseq =  
+    let* (ex, cseq') = primary cseq in
+
+    (match Seq.uncons cseq' with
+        | Some ((LEFT_PAREN, _l, _c), r) ->
+            (match ex with
+            | Literal VarIdent name ->  
+                _callexpr (_l, _c) name r
+            | _ -> 
+                Error (Unhandled (Parse, UnCallable ex), r)
+            )
+        | _ ->  
+            Ok (ex, cseq')
+    )
+
+
+and _callexpr (l, c) ex ce = 
+    let args = [] in
+    let size = 0 in
+    let rec check size args cs = 
+        if size >= _MaxArgs then 
+            Error (Unhandled (Parse, MaxArgs (l, c, ex)), cs)
+        else
+        (match Seq.uncons cs with
+            | Some ((RIGHT_PAREN, _l, _c), r) ->
+                Ok (Call (args, ex, size), r)
+            | _ -> 
+                let* (ex', rem) = _expression cs in
+                (match Seq.uncons rem with
+                    | Some ((COMMA, _l, _c), r) ->
+                        check (size + 1) (ex' :: args) r
+                    | Some ((RIGHT_PAREN, _l, _c), r) ->
+                        Ok (Call (ex' :: args, ex, (size + 1)),  r)
+                    | _ -> 
+                        Ok (Call (ex' :: args, ex, (size + 1)), rem)
+                ) 
+        )
+    in check size args ce
 
 and primary pseq = 
 

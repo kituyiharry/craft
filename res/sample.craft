@@ -37,24 +37,41 @@
 //     printl "x is less than 0";
 // }
 // 
-var n = 10;
 
-while (n >= 1)
-{ 
-    print "n is ";
-    printl n;
-    n = n - 1;
-};
+// var n = 10;
+// 
+// while (n >= 1)
+// { 
+//     print "n is ";
+//     printl n;
+//     n = n - 1;
+// };
 
 
 printl "-----------------------------------";
 for (var i = 0; i < 10; i = i + 1) printl i;
 printl "-----------------------------------";
 
-for (n = 0; n < 3; n = n + 1) {
-    print "n squared is ";
-    printl (n * n);
+var a = 0;
+var i = 0;
+var temp;
+
+// fibonacci
+for (var b = 1; a < 10000; b = temp + b) {
+  print i;
+  print "th fibonnaci number is ";
+  printl a;
+  temp = a;
+  i = i + 1;
+  a = b;
 }
+
+var now = clock();
+
+print "now is -> ";
+printl clock();
+
+var avg = average(1, sqrt(2), "chicken", 3.14);
 
 // {
 //     if (x > 0) { 
