@@ -142,22 +142,31 @@ let rec _program tseq =
 
     match Seq.uncons tseq with
     | Some(((PRINT), _, _), tseq') -> 
+        (* print "stuff" *)
         _printstmt tseq'
     | Some(((PRINTLN), _, _), tseq') -> 
+        (* printl "stuff with newline" *)
         _printlnstmt tseq'
     | Some(((VAR), _, _), tseq') -> 
+        (* var x = 100; *)
         _vardecl tseq'
     | Some (((LEFT_BRACE), l, c), tseq') -> 
+        (* { //more stuff in braces } *)
         _blockstmts (l, c) [] tseq'
     | Some (((IF), l, c), tseq') -> 
+        (* if (cond) { //more stuff in optional braces } *)
         _ifstmts (l, c) tseq'
     | Some (((WHILE), l, c), tseq') -> 
+        (* while (cond) { //do stuff } *)
         _whilestmt (l, c) tseq'
     | Some (((FOR), l, c), tseq') -> 
+        (* for (var i = 0; i < max; i = i + 1) { //stuff } *)
         _forstmt (l, c) tseq'
     | Some ((IDENTIFIER _ident, _, _), _) ->
+        (* x = something; *)
         _assign tseq
     | _ -> 
+        (* 1 + 1 - (2 * 3 / 4) *)
         _express tseq
 
 and _forstmt (l, c) fseq =

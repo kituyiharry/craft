@@ -69,7 +69,7 @@ let isAlpha c =
 ;;
 
 let isAlphaNumeric c =
-  isAlpha(c) || isDigit(c);
+  (isAlpha c) || (isDigit c);
 ;;
 
 let ht = 
@@ -182,7 +182,7 @@ let parse_token tok lseqst cseqst =
 
     (* unmatched - halt parser *)
     |   c  -> 
-        if isDigit(c) then
+        if isDigit c then
             let mbuf = Buffer.create 10 in
             (* add current char and collect the rest *)
             let _ = Buffer.add_char mbuf c in
@@ -276,12 +276,8 @@ let scan_lines lineseq =
         | Some ((line, num), more) -> 
             (try 
                 let (lexemes', tokerrs) = scan_tokens more (line |> String.to_seq) in
-                let state' = (if List.is_empty lexemes' then state else
-                    (num, lexemes') :: state 
-                ) in
-                let errs'  = (if List.is_empty tokerrs then errs else 
-                    (num, tokerrs) :: errs
-                ) in 
+                let state' = (if List.is_empty lexemes' then state else (num, lexemes') :: state ) in
+                let errs'  = (if List.is_empty tokerrs  then errs  else (num, tokerrs)  :: errs) in 
                 lines more state' errs'
             with 
                 | effect (SkipAcross (more', predc)), k -> 

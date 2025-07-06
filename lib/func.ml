@@ -1,6 +1,8 @@
 open Env;;
 open Ast;;
 
+(* interpreter is a function from environment and expression returning a literal
+   and transformation of the environment - if any *)
 type interp = (craftenv -> expr -> (lit * craftenv, crafterr) result)
 
 type funcobj = { 
