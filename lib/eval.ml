@@ -158,6 +158,9 @@ let eval_exprs (Program {state=el;errs}) =
             | Some ((_ast), more) ->
                 (match _ast with
                 (* newline *)
+                | Stmt (Ret _l)  ->
+                    (* return statement ends execution of the current sequence of declarations *)
+                    { prg=(Program { s with state=(_ast :: s.state) } ); env=env }
                 | Stmt (Raw (Eval (Literal Eol)))  ->
                     foldast (s, env) more
                 | Stmt (Raw (Eval e'))  -> (match (eval env e') with
@@ -266,9 +269,17 @@ let eval_exprs (Program {state=el;errs}) =
 
                 | FunDecl (name, args, arity, block) -> 
 
-                    let impl = Native.impl (foldast) args block in
+                    let impl = Native.impl name (foldast) args block in
                     let env = Env.define name (FunImpl (arity, impl)) env in
                     foldast (s, env) more
+
+                | Return exp ->
+                        (match eval env exp with 
+                            | Ok (l, env') -> 
+                                { prg=Program ({ s with state=((Stmt (Ret l)) :: s.state) }); env=env' }
+                            | Error e ->
+                                { prg=Program ({ s with errs=((Unhandled (Eval, e)) :: s.errs) }); env=env }
+                        )
 
                 | Loop (For (init, _condn, _assgn, _blck)) ->
 

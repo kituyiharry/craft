@@ -82,9 +82,10 @@ printl (now2 - now1);
 
 fun sayHi(first, last) {
   print "Hi, " + first + " " + last + "!";
+  return last;
 }
 
-sayHi("Dear", "Reader");
+var y = sayHi("Dear", "Reader");
 
 // {
 //     if (x > 0) { 

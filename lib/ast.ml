@@ -66,7 +66,7 @@ and crafterr =
     | UnCallable   of expr
     | Unimplmnted  of expr
     | ArgMismatch  of string * int * int (* arity mismatch *)
-    | ErrGroup     of expr list (* many errors at once *)
+    | ErrGroup     of string * expr list (* many errors at once *)
     | Unterminated
 
 and unary = 
@@ -122,6 +122,7 @@ and apply =
 and stmt  = 
     | Raw   of exprst
     | Side  of apply
+    | Ret   of lit (* return value *)
 
 and branch = 
     | If of (expr * decl * decl option)
@@ -133,6 +134,7 @@ and decl =
     | Branch  of branch
     | Loop    of loop
     | FunDecl of (string * lit list * int * decl)
+    | Return  of expr
 
 and loopinit = 
     | LoopDecl of (string * expr)
@@ -177,9 +179,16 @@ let rec _program tseq =
     | Some ((IDENTIFIER _ident, _, _), _) ->
         (* x = something; *)
         _assign tseq
+    | Some ((RETURN, _, _), rseq') ->
+        (* return something; *)
+        _retstmt rseq'
     | _ -> 
         (* 1 + 1 - (2 * 3 / 4) *)
         _express tseq
+
+and _retstmt rseq = 
+    let* (exp, rem) = _expression rseq in
+    Ok ((Return exp), rem)
 
 and _funcblock (l, c) fncseq = 
 

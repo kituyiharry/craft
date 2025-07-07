@@ -6,10 +6,10 @@ let clock _env _args =
     Ok (Number (Unix.gettimeofday ()), _env) 
 ;;
 
-let impl (_interp: ((context * Ast.craftenv) -> decl Seq.t -> craftsrc)) (_args: lit list) (block) = 
+let impl (name) (_interp: ((context * Ast.craftenv) -> decl Seq.t -> craftsrc)) (_args: lit list) (block) = 
     (*fun  env and expression *)
     (fun (_env: craftenv) (_args': lit list) -> 
-        (* resolve arguments with their local names *)
+        (* resolve arguments with their local names (map params to vars) *)
         let e' = (
             _args'
             |> List.to_seq
@@ -17,21 +17,19 @@ let impl (_interp: ((context * Ast.craftenv) -> decl Seq.t -> craftsrc)) (_args:
             |> Seq.fold_left (fun e' (argn, argv) -> 
                 match (argn, argv) with
                 | (VarIdent n, v) -> Env.define n v e'
-                | _ -> 
-                    let _ = Format.printf "Undefined var arg: %s -> %s" 
-                    (show_lit argn) (show_lit argv)
-                    in
-                    e'
+                | _ -> e'
             ) _env
         ) in 
 
         (* run the interpreter! *)
-        let { prg=(Program({ errs; _ })); env } = _interp ({ state=[]; errs=[] }, e') (Seq.return block) in
+        let { prg=(Program({ errs; state })); env } = _interp ({ state=[]; errs=[] }, e') (Seq.return block) in
 
-        match errs with
-        | [] -> 
+        match (state, errs) with
+        | (((Stmt (Ret l)) :: _rest), []) -> 
+            Ok (l, env)
+        | (_, []) -> 
             Ok ((Nil), env)
-        | _e :: _ -> 
-            Error (ErrGroup errs)
+        | (_, (_e :: _)) -> 
+            Error (ErrGroup (name, errs))
     )
 ;;
