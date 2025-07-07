@@ -47,10 +47,13 @@ module Env = struct
             let sb = Buffer.create 200 in 
             let leadtab = 
                 if (tabcount > 0) then 
-                    (String.make tabcount '\t')
+                    (String.make tabcount ' ')
                 else 
                     ""
             in
+
+            let card = ValEnv.cardinal env.env in
+            let _ = Buffer.add_string sb (leadtab ^ "(size: " ^ (Int.to_string card) ^ " parent: " ^ (Bool.to_string (Option.is_some env.par)) ^ ")\n") in
 
             match env.par with
             | Some parenv -> 
@@ -63,9 +66,10 @@ module Env = struct
                     let _ = Buffer.add_string sb (leadtab ^ "\n") in 
                     ()
                 ) env.env in 
-                let _ = Buffer.add_string sb (leadtab ^ "{ \n") in
-                let _ = inshow (tabcount + 1) parenv in
-                let _ = Buffer.add_string sb (leadtab ^ "} \n") in
+                (*let _ = Buffer.add_string sb (leadtab ^ "{ \n") in*)
+                let e' = inshow (tabcount + 1) parenv in
+                let _ = Buffer.add_string sb e' in
+                (*let _ = Buffer.add_string sb (leadtab ^ "} \n") in*)
                 let _ = Buffer.add_string sb "} \n" in
                 Buffer.contents sb
             | _ -> 

@@ -6,6 +6,11 @@ let clock _env _args =
     Ok (Number (Unix.gettimeofday ()), _env) 
 ;;
 
+let env _env _args = 
+    let _ = Format.printf "----------------------\n %s \n----------------------\n" (Env.show _env) in
+    Ok (Nil, _env) 
+;;
+
 let impl (name) (_interp: ((context * Ast.craftenv) -> decl Seq.t -> craftsrc)) (_args: lit list) (block) = 
     (*fun  env and expression *)
     (fun (_env: craftenv) (_args': lit list) -> 

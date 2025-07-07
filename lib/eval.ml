@@ -335,5 +335,6 @@ let eval_exprs (Program {state=el;errs}) =
         )
     in 
     let env = Env.define "clock" (FunImpl (0, Native.clock)) Env.empty in
+    let env = Env.define "env"   (FunImpl (0, Native.env))   env  in
     foldast ({ state=[]; errs=errs }, env) astseq
 ;;

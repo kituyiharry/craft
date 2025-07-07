@@ -12,15 +12,16 @@ let runfile fname =
                 ) errs)
             in toks
         )
-    |> List.map (fun (_x, l) -> 
-        let _ = List.iter (fun t -> 
-            let s = Craft.Token.show_token t in 
-            let _ = Format.print_newline () in
-            Format.print_string s
-        ) l in
-        let _ = Format.print_newline () in
-        (_x, l)
-    )
+    (*
+     *|> List.map (fun (_x, l) -> 
+     *    let _ = List.iter (fun t -> 
+     *        let s = Craft.Token.show_token t in 
+     *        let _ = Format.print_newline () in
+     *        Format.print_string s
+     *    ) l in
+     *    let _ = Format.print_newline () in
+     *    (_x, l)
+     *)
     |> Craft.Exec.normalize
     |> Craft.Ast.parse
     |> (function 
@@ -42,14 +43,14 @@ let runfile fname =
             ) in b')
         )
     |> Craft.Eval.eval_exprs
-    |> function {prg=s; env=e} -> 
-        let _ = Format.print_newline () in
-        let _ = Format.print_string (Craft.Env.Env.show e) in
-        s
-    |> Craft.Ast.show_source
-    |> function s -> 
-        let _ = Format.print_newline () in
-        Format.print_string s
+    (*|> function {prg=s; env=e} -> *)
+        (*let _ = Format.print_newline () in*)
+        (*let _ = Format.print_string (Craft.Env.Env.show e) in*)
+        (*s*)
+    (*|> Craft.Ast.show_source*)
+    (*|> function s -> *)
+        (*let _ = Format.print_newline () in*)
+        (*Format.print_string s*)
 ;;
 
 let main () = 

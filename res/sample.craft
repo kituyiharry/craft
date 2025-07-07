@@ -66,24 +66,21 @@
 //   a = b;
 // }
 
-var now1 = clock();
+// print "elapse is -> ";
+// printl (now2 - now1);
+
+fun sayHi(first, last) {
+  printl "Hi, " + first + " " + last + "!";
+  return last;
+}
 
 fun count(n) {
   if (n > 1) count(n - 1);
+  // env();
   printl n;
 }
 
 count(3);
-
-var now2 = clock();
-
-print "elapse is -> ";
-printl (now2 - now1);
-
-fun sayHi(first, last) {
-  print "Hi, " + first + " " + last + "!";
-  return last;
-}
 
 var y = sayHi("Dear", "Reader");
 
