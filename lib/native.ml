@@ -7,8 +7,9 @@ let clock _env _args =
 ;;
 
 let impl (_interp: ((context * Ast.craftenv) -> decl Seq.t -> craftsrc)) (_args: lit list) (block) = 
-    (* env and expression *)
+    (*fun  env and expression *)
     (fun (_env: craftenv) (_args': lit list) -> 
+        (* resolve arguments with their local names *)
         let e' = (
             _args'
             |> List.to_seq
@@ -24,7 +25,13 @@ let impl (_interp: ((context * Ast.craftenv) -> decl Seq.t -> craftsrc)) (_args:
             ) _env
         ) in 
 
-        let (r) = _interp ({ state=[]; errs=[] }, e') (Seq.return block) in
-        Ok ((Nil), r.env)
+        (* run the interpreter! *)
+        let { prg=(Program({ errs; _ })); env } = _interp ({ state=[]; errs=[] }, e') (Seq.return block) in
+
+        match errs with
+        | [] -> 
+            Ok ((Nil), env)
+        | _e :: _ -> 
+            Error (ErrGroup errs)
     )
 ;;

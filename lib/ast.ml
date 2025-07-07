@@ -56,8 +56,8 @@ and crafterr =
     | Unmatched    of linenum * colmnum * tokentype
     | BadExp       of expr * (lit option)
     | BadCond      of expr * (lit option)
-    | TypeError    of lit * expr * lit 
-    | BadOp        of lit * expr * lit
+    | TypeError    of lit  * expr * lit 
+    | BadOp        of lit  * expr * lit
     | EndOfSeq     of string 
     | Unexpected   of int * int * tokentype
     | Undefined    of string
@@ -66,6 +66,7 @@ and crafterr =
     | UnCallable   of expr
     | Unimplmnted  of expr
     | ArgMismatch  of string * int * int (* arity mismatch *)
+    | ErrGroup     of expr list (* many errors at once *)
     | Unterminated
 
 and unary = 

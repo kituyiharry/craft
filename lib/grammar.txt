@@ -57,4 +57,5 @@ arguments      → expression ( "," expression )* ;
 funDecl        → "fun" function ;
 function       → IDENTIFIER "(" parameters? ")" block ;
 parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
+returnStmt     → "return" expression? ";" ;
 

@@ -80,6 +80,12 @@ var now2 = clock();
 print "elapse is -> ";
 printl (now2 - now1);
 
+fun sayHi(first, last) {
+  print "Hi, " + first + " " + last + "!";
+}
+
+sayHi("Dear", "Reader");
+
 // {
 //     if (x > 0) { 
 //         var x = x + 2223; 

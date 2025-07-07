@@ -26,7 +26,11 @@ let rec eval (env) = function
                 | e -> e
             )
         ) (Ok ([], env)) _args in
-        Func.call { func=_ident;arty=_arity;envr=_env';argl=_args'; }
+
+        let _env''  = Env.spawn _env' in
+        let* (l, e) = Func.call { func=_ident;arty=_arity;envr=_env'';argl=_args'; } in 
+
+        Ok (l, Env.parent e)
     | Unary (op, u) ->
         let* (u', env') = eval env u in
         (match op with
