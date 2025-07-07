@@ -3,7 +3,7 @@ let (let*) = Result.bind;;
 
 module Env = struct 
 
-   type t = Ast.craftenv;; 
+    type t = craftenv;; 
 
     let empty = { env=ValEnv.empty; par=None; };;
 

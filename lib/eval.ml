@@ -4,11 +4,6 @@ open Func;;
 
 let (let*) = Result.bind;;
 
-type craftenv = {
-        prg: source 
-    ;   env: Env.t
-}
-
 let rec eval (env) = function
     | Literal  l  -> (match l with
             | (VarIdent n) -> let* g = (Env.get env n) in 
@@ -31,8 +26,7 @@ let rec eval (env) = function
                 | e -> e
             )
         ) (Ok ([], env)) _args in
-        let _args' = List.rev (_args') in
-        Func.call (eval) { func=_ident;arty=_arity;envr=_env';argl=_args'; blck=None }
+        Func.call { func=_ident;arty=_arity;envr=_env';argl=_args'; }
     | Unary (op, u) ->
         let* (u', env') = eval env u in
         (match op with
@@ -265,6 +259,13 @@ let eval_exprs (Program {state=el;errs}) =
                                 foldast ({ s  with errs = (err :: s.errs) }, env) more
                         )
                     in loop (s, env)
+
+                | FunDecl (name, args, arity, block) -> 
+
+                    let impl = Native.impl (foldast) args block in
+                    let env = Env.define name (FunImpl (arity, impl)) env in
+                    foldast (s, env) more
+
                 | Loop (For (init, _condn, _assgn, _blck)) ->
 
                     let env' = Env.spawn env in
@@ -319,6 +320,5 @@ let eval_exprs (Program {state=el;errs}) =
         )
     in 
     let env = Env.define "clock" (FunImpl (0, Native.clock)) Env.empty in
-
     foldast ({ state=[]; errs=errs }, env) astseq
 ;;

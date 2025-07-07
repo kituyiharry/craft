@@ -26,7 +26,14 @@ type stage =
 
 module ValEnv = Map.Make (String);;
 
-type craftenv = {
+(* order of type declarations deceptively matters in Ocaml!! *)
+
+type craftsrc = {
+        prg: source 
+    ;   env: craftenv
+} and
+
+craftenv = {
         env: lit ValEnv.t [@opaque]
     ;   par: craftenv option
 } and
@@ -38,7 +45,7 @@ lit =
     | Number   of float
     | String   of string
     | VarIdent of string
-    | FunImpl  of (int * (craftenv -> lit list -> decl option -> ((lit * craftenv), crafterr) result))
+    | FunImpl  of (int * (craftenv -> lit list -> ((lit * craftenv), crafterr) result))
 
 and context = {
       state: decl list 
@@ -124,6 +131,7 @@ and decl =
     | Block   of decl list
     | Branch  of branch
     | Loop    of loop
+    | FunDecl of (string * lit list * int * decl)
 
 and loopinit = 
     | LoopDecl of (string * expr)
@@ -151,23 +159,58 @@ let rec _program tseq =
         (* var x = 100; *)
         _vardecl tseq'
     | Some (((LEFT_BRACE), l, c), tseq') -> 
-        (* { //more stuff in braces } *)
+        (* { /* more stuff in braces */ } *)
         _blockstmts (l, c) [] tseq'
     | Some (((IF), l, c), tseq') -> 
         (* if (cond) { //more stuff in optional braces } *)
         _ifstmts (l, c) tseq'
     | Some (((WHILE), l, c), tseq') -> 
-        (* while (cond) { //do stuff } *)
+        (* while (cond) { /* do stuff */ } *)
         _whilestmt (l, c) tseq'
     | Some (((FOR), l, c), tseq') -> 
-        (* for (var i = 0; i < max; i = i + 1) { //stuff } *)
+        (* for (var i = 0; i < max; i = i + 1) { /* stuff */ } *)
         _forstmt (l, c) tseq'
+    | Some ((FUN, l, c), fncseq') ->
+        (* fun name (...) { /* do stuff */ } *)
+        _funcblock (l, c) fncseq'
     | Some ((IDENTIFIER _ident, _, _), _) ->
         (* x = something; *)
         _assign tseq
     | _ -> 
         (* 1 + 1 - (2 * 3 / 4) *)
         _express tseq
+
+and _funcblock (l, c) fncseq = 
+
+    match Seq.uncons fncseq with
+    | Some ((IDENTIFIER name, l, c), more) -> 
+        (match Seq.uncons more with
+        | Some ((LEFT_PAREN, l, c), more') -> 
+            let* exp, rem = _callexpr (l, c) name more' in
+            (match exp with
+                | Call (exl, name, arty) -> 
+                    let* exl' = List.fold_left (fun acc ac -> 
+                        (match acc with 
+                            | Ok r ->  
+                                (match ac with 
+                                    | Literal (VarIdent _ as v) -> (Ok (v :: r))
+                                    | e ->
+                                        Error (Unhandled (Parse, BadExp (e, None)), rem)
+                                 )
+                            | e    -> e
+                        )
+                    ) (Ok []) exl in
+                    let* (blck, left) = _program rem in
+                    Ok (FunDecl (name, exl', arty, blck), left)
+                | e -> 
+                    (* likely unreachable *)
+                    Error (Unhandled (Parse, (BadExp (e, None))), fncseq)
+            )
+        | _ ->
+            Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), fncseq)
+        )
+    | _ -> 
+        Error (Unhandled (Parse, (Unexpected (l, c, LEFT_PAREN))), fncseq)
 
 and _forstmt (l, c) fseq =
 

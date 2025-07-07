@@ -54,4 +54,7 @@ whileStmt      → "while" "(" expression ")" statement ;
 unary          → ( "!" | "-" ) unary | call ;
 call           → primary ( "(" arguments? ")" )* ;
 arguments      → expression ( "," expression )* ;
+funDecl        → "fun" function ;
+function       → IDENTIFIER "(" parameters? ")" block ;
+parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
 
