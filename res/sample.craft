@@ -70,8 +70,12 @@
 // printl (now2 - now1);
 
 fun sayHi(first, last) {
-  printl "Hi, " + first + " " + last + "!";
-  return last;
+  var r = "Hi, " + first; 
+  {
+    return r;
+  }
+  var s = r + " " + last + "!";
+  return s;
 }
 
 fun count(n) {
@@ -83,6 +87,7 @@ fun count(n) {
 count(3);
 
 var y = sayHi("Dear", "Reader");
+printl y;
 
 // {
 //     if (x > 0) { 
