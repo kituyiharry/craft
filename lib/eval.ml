@@ -154,6 +154,16 @@ let eval_exprs (Program {state=el;errs}) =
     let astseq = (List.to_seq el) in
 
     let rec foldast (s, env) tseq =
+
+    (* in case the last instruction was a Return or Break! we avoid using
+       exceptions like in the book since we are tracking execution history
+       already *)
+    match s.state with
+        | (Stmt (Ret _l)) :: _ -> 
+            (* last one was a break or return *)
+            { prg=(Program s); env=env }
+        |  _ ->
+
         (match Seq.uncons tseq with
             | Some ((_ast), more) ->
                 (match _ast with

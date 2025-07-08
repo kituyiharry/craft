@@ -71,7 +71,7 @@
 
 fun sayHi(first, last) {
   var r = "Hi, " + first; 
-  {
+  if (true) {
     return r;
   }
   var s = r + " " + last + "!";
@@ -84,10 +84,20 @@ fun count(n) {
   printl n;
 }
 
-count(3);
+// count(3);
 
 var y = sayHi("Dear", "Reader");
 printl y;
+
+
+fun fib(n) {
+  if (n <= 1) return n;
+  return fib(n - 2) + fib(n - 1);
+}
+
+for (var i = 0; i < 7; i = i + 1) {
+  printl fib(i);
+}
 
 // {
 //     if (x > 0) { 
