@@ -16,9 +16,14 @@ module Func = struct
 
     let call (obj: funcobj)  = 
         match Env.get obj.envr obj.func with
-        | Ok (FunImpl (arity, callable)) -> 
+        | Ok (FunImpl (arity, closure, callable)) -> 
+            (* use previously captured environment *)
+            let env' = { env=closure.env; par=obj.envr.par } in
             if arity = obj.arty then
-                (callable obj.envr obj.argl)
+                let* l, r =  (callable env' obj.argl) in
+                (* update closure environment!!  *)
+                let r' = Env.update obj.func (FunImpl (arity, r, callable)) r in 
+                Ok(l, r')
             else
                 Error (ArgMismatch (obj.func, arity, obj.arty))
         | Ok _ ->

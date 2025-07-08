@@ -285,7 +285,7 @@ let eval_exprs (Program {state=el;errs}) =
                 | FunDecl (name, args, arity, block) -> 
 
                     let impl = Native.impl name (foldast) args block in
-                    let env = Env.define name (FunImpl (arity, impl)) env in
+                    let env = Env.define name (FunImpl (arity, env, impl)) env in
                     foldast (s, env) more
 
                 | Return exp ->
@@ -349,7 +349,7 @@ let eval_exprs (Program {state=el;errs}) =
                 { prg=Program (s); env=env }
         )
     in 
-    let env = Env.define "clock" (FunImpl (0, Native.clock)) Env.empty in
-    let env = Env.define "env"   (FunImpl (0, Native.env))   env  in
+    let env = Env.define "clock" (FunImpl (0, Env.empty, Native.clock)) Env.empty in
+    let env = Env.define "env"   (FunImpl (0, Env.empty, Native.env))   env  in
     foldast ({ state=[]; errs=errs }, env) astseq
 ;;

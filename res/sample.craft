@@ -85,19 +85,19 @@ fun count(n) {
 }
 
 // count(3);
-
-var y = sayHi("Dear", "Reader");
-printl y;
-
-
-fun fib(n) {
-  if (n <= 1) return n;
-  return fib(n - 2) + fib(n - 1);
-}
-
-for (var i = 0; i < 7; i = i + 1) {
-  printl fib(i);
-}
+// 
+// var y = sayHi("Dear", "Reader");
+// printl y;
+// 
+// 
+// fun fib(n) {
+//   if (n <= 1) return n;
+//   return fib(n - 2) + fib(n - 1);
+// }
+// 
+// for (var i = 0; i < 7; i = i + 1) {
+//   printl fib(i);
+// }
 
 // {
 //     if (x > 0) { 
@@ -114,3 +114,17 @@ for (var i = 0; i < 7; i = i + 1) {
 // 
 // print "and now x is ";
 // printl x;
+
+fun makeCounter() {
+  var i = 0;
+  fun count() {
+    i = i + 1;
+    printl i;
+  }
+  return count;
+}
+
+var counter = makeCounter();
+
+counter(); // "1".
+counter(); // "2".

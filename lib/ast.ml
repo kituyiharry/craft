@@ -45,7 +45,7 @@ lit =
     | Number   of float
     | String   of string
     | VarIdent of string
-    | FunImpl  of (int * (craftenv -> lit list -> ((lit * craftenv), crafterr) result))
+    | FunImpl  of (int * craftenv * (craftenv -> lit list -> ((lit * craftenv), crafterr) result))
 
 and context = {
       state: decl list 

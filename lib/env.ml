@@ -12,6 +12,21 @@ module Env = struct
         { env with env=(ValEnv.add name value env.env) } 
     ;;
 
+    (* we can overwrite vars *)
+    let rec update name value env = 
+        match ValEnv.find_opt name env.env with
+        | Some _ ->
+            { env with env=(ValEnv.add name value env.env) }    
+        | _ -> 
+            (match env.par with
+                | Some p ->
+                    { env with par=(Some (update name value p)) }
+                | None -> 
+                    (* We didn't find that value *)
+                    raise Not_found
+            )
+    ;;
+
     let rec get env name = 
         match ValEnv.find_opt name env.env with
         | Some x -> Ok x 
@@ -53,7 +68,11 @@ module Env = struct
             in
 
             let card = ValEnv.cardinal env.env in
-            let _ = Buffer.add_string sb (leadtab ^ "(size: " ^ (Int.to_string card) ^ " parent: " ^ (Bool.to_string (Option.is_some env.par)) ^ ")\n") in
+            let _ = Buffer.add_string sb (
+                leadtab ^ "(size: " ^ (Int.to_string card) ^ 
+                " parent: " ^ (Bool.to_string (Option.is_some env.par)) ^ 
+                ")\n") 
+            in
 
             match env.par with
             | Some parenv -> 
