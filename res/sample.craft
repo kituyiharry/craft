@@ -128,3 +128,12 @@ var counter = makeCounter();
 
 counter(); // "1".
 counter(); // "2".
+
+fun factorial(n) {
+    if (n == 0) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+printl factorial(5);
