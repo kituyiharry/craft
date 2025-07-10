@@ -1,6 +1,6 @@
+open Resolver;;
 open Ast;;
 open Env;;
-
 
 let clock _env _args = 
     Ok (Number (Unix.gettimeofday ()), _env) 
@@ -27,7 +27,7 @@ let impl (name) (_interp: ((context * Ast.craftenv) -> decl Seq.t -> craftsrc)) 
         ) in 
 
         (* run the interpreter! *)
-        let { prg=(Program({ errs; state })); env } = _interp ({ state=[]; errs=[] }, e') (Seq.return block) in
+        let { prg=(Program({ errs; state; _ })); env } = _interp ({ state=[]; errs=[]; resl=(Resolver.empty) }, e') (Seq.return block) in
 
         match (state, errs) with
         | (((Stmt (Ret l)) :: _rest), []) -> 

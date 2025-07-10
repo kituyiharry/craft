@@ -69,20 +69,20 @@
 // print "elapse is -> ";
 // printl (now2 - now1);
 
-fun sayHi(first, last) {
-  var r = "Hi, " + first; 
-  if (true) {
-    return r;
-  }
-  var s = r + " " + last + "!";
-  return s;
-}
+// fun sayHi(first, last) {
+//   var r = "Hi, " + first; 
+//   if (true) {
+//     return r;
+//   }
+//   var s = r + " " + last + "!";
+//   return s;
+// }
 
-fun count(n) {
-  if (n > 1) count(n - 1);
-  // env();
-  printl n;
-}
+// fun count(n) {
+//   if (n > 1) count(n - 1);
+//   // env();
+//   printl n;
+// }
 
 // count(3);
 // 
@@ -95,7 +95,7 @@ fun count(n) {
 //   return fib(n - 2) + fib(n - 1);
 // }
 // 
-// for (var i = 0; i < 7; i = i + 1) {
+// for (var i = 0; i < 10; i = i + 1) {
 //   printl fib(i);
 // }
 
@@ -115,25 +115,38 @@ fun count(n) {
 // print "and now x is ";
 // printl x;
 
-fun makeCounter() {
-  var i = 0;
-  fun count() {
-    i = i + 1;
-    printl i;
+// fun makeCounter() {
+//   var i = 0;
+//   fun count() {
+//     i = i + 1;
+//     printl i;
+//   }
+//   return count;
+// }
+
+// var counter = makeCounter();
+
+// counter(); // "1".
+// counter(); // "2".
+
+// printl "";
+
+// fun factorial(n) {
+//     if (n == 0) {
+//         return 1;
+//     }
+//     return n * factorial(n - 1);
+// }
+// 
+// print "factorial 5 is ";
+// printl factorial(5);
+
+var a = "global";
+{
+  fun showA() {
+    printl a;
   }
-  return count;
+  showA();
+  var a = "block";
+  showA();
 }
-
-var counter = makeCounter();
-
-counter(); // "1".
-counter(); // "2".
-
-fun factorial(n) {
-    if (n == 0) {
-        return 1;
-    }
-    return n * factorial(n - 1);
-}
-
-printl factorial(5);

@@ -39,7 +39,7 @@ let runfile fname =
             let _ = Format.print_string (String.cat "Error!!! -> " s) in
             let _ = Format.print_newline () in
             let _ = Format.print_newline () in
-                (Craft.Ast.Program {state=[];errs=[]})
+                (Craft.Ast.Program {state=[];errs=[]; resl=(Craft.Resolver.Resolver.empty)})
             ) in b')
         )
     |> Craft.Eval.eval_exprs

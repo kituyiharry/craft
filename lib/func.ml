@@ -3,7 +3,6 @@ open Ast;;
 
 (* interpreter is a function from environment and expression returning a literal
    and transformation of the environment - if any *)
-type interp = (craftenv -> expr -> (lit * craftenv, crafterr) result)
 
 type funcobj = { 
         func: string      (* Function name  *)
@@ -22,8 +21,8 @@ module Func = struct
             if arity = obj.arty then
                 let* l, r =  (callable env' obj.argl) in
                 (* update closure environment!!  *)
-                let r' = Env.update obj.func (FunImpl (arity, r, callable)) r in 
-                Ok(l, r')
+                let r = Env.update obj.func (FunImpl (arity, r, callable)) r in 
+                Ok(l, r)
             else
                 Error (ArgMismatch (obj.func, arity, obj.arty))
         | Ok _ ->
