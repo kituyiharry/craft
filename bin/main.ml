@@ -42,6 +42,14 @@ let runfile fname =
                 (Craft.Ast.Program {state=[];errs=[]; resl=(Craft.Resolver.Resolver.empty)})
             ) in b')
         )
+    |> (function (Program (ast)) as p -> 
+        let ps = Craft.Ast.prgresolve (Craft.Resolver.Resolver.empty) ast in 
+        let _ = (match ps with
+            | Ok _  -> () 
+            | Error e -> (Format.printf "resolver error:  %s!!" e)
+        )
+        in p
+    )
     |> Craft.Eval.eval_exprs
     (*|> function {prg=s; env=e} -> *)
         (*let _ = Format.print_newline () in*)
