@@ -70,7 +70,8 @@ and crafterr =
     | ArgMismatch  of string * int * int (* arity mismatch *)
     | ErrGroup     of string * expr list (* many errors at once *)
     | ScopeError   of linenum * colmnum * string
-    | Unterminated
+    | Unterminated 
+    [@@deriving show]
 
 and unary = 
     | Negate 
@@ -156,7 +157,24 @@ and source =
 type interp = (craftenv -> expr -> (lit * craftenv, crafterr) result)
 
 (* scope resolution helpers *)
-let rec expresolve res exp = 
+let rec absolve name res = 
+
+    let _len = List.length res in 
+    (* since we push to the front *)
+    let m =List.find_index (fun { Resolver.locals } -> 
+        Resolver.ScopeMap.mem name locals
+    ) res in
+    match m with
+    | Some idx -> 
+        let _ = Format.printf "Found %s at index: %d of %d\n" name idx _len in
+        (* interp.resolve ??? *)
+        Ok res
+    | _ -> 
+        (* it is likely in the globals environment!! *)
+        let _ = Format.printf "'%s' is global??\n" name in
+        Ok res
+
+and expresolve exp res = 
     (match exp with
         | Literal (_lit) -> 
             (match _lit with
@@ -166,7 +184,7 @@ let rec expresolve res exp =
                             (match Resolver.ScopeMap.find_opt name locals  with 
                                 | Some false ->
                                     Error ("Initializer reuse of " ^ name)
-                                |  _ -> Ok res
+                                |  _ -> absolve name res 
                             )
                         | [] -> 
                             Ok res
@@ -178,47 +196,109 @@ let rec expresolve res exp =
         | Term      (_term) -> Ok res
         | Compr     (_comparison) -> Ok res
         | Operator  (_equality) -> Ok res
-        | Unary     (_unary, _expr) -> Ok res
-        | Binary    (_lexp,  _op, _rexp) -> Ok res
-        | Grouping  (_expr) -> Ok res 
-        | Logic     (_logical) -> Ok res
-        | Assign    (_string, _expr) -> Ok res
-        | Unhandled (_stage,  _crafterr) -> Ok res 
-        | Call      (_callargs, _funcname, _callarity) -> Ok res
+        | Unary     (_unary, _expr) -> 
+            expresolve _expr res
+        | Binary    (_lexp,  _op, _rexp) -> 
+            let* res' = expresolve _lexp res in 
+            expresolve _rexp res' 
+        | Grouping  (_expr) -> 
+            expresolve _expr res
+        | Logic     (_logical) -> 
+            Ok res
+        | Assign    (_string, _expr) -> 
+            (* callee or assignee  *)
+            let* res' = expresolve (Literal (VarIdent _string)) res in 
+            expresolve _expr res' 
+        | Unhandled (_stage,  _crafterr) -> Error ("Unhandled node: " ^ (show_crafterr _crafterr))
+        | Call      (_callargs, _funcname, _callarity) -> 
+            List.fold_left (fun acc v ->
+                match acc with 
+                | Ok res -> expresolve v res
+                | e -> e
+            ) (Ok res) _callargs
     )
 
-and dclresolve res dcl = 
+and dclresolve dcl res = 
     (match dcl with
         | VarDecl (_name, _exp) -> 
-            let res' = Resolver.declare res _name in
+            let res' = Resolver.declare _name res in
             (match _exp with
                 | Literal Nil -> 
-                    Ok (Resolver.define (res') _name)
+                    Ok (Resolver.define  _name (res'))
                 | _ -> 
-                    let* res' = expresolve res' _exp in
-                    Ok (Resolver.define res' _name)
+                    let* res' = expresolve _exp res' in
+                    Ok (Resolver.define _name res')
             )
-        | Stmt  (_stmt) -> Ok res
+        | Stmt  (_stmt) -> 
+            (match _stmt with 
+                | Raw  (Eval ex) -> 
+                    (expresolve ex res)
+                | Side ((Effect (Print ex)))  ->
+                    (expresolve ex res)
+                | Side ((Effect (Println ex)))  ->
+                    (expresolve ex res)
+                | Ret  (lit)    -> 
+                    (expresolve (Literal lit) res)
+            )
         | Block (blcks) -> 
             let res'  = Resolver.begin_scope res in 
             let* res' = List.fold_left (fun acc dcl ->
                 (match acc with 
-                    | Ok res -> dclresolve res dcl 
+                    | Ok res -> dclresolve dcl res 
                     | e -> e
                 )
             ) (Ok res') blcks in
             let res  = Resolver.end_scope res' in
             Ok res
-        | Branch  (_branch) -> Ok res
-        | Loop    (_loop)   -> Ok res
-        | FunDecl (_name, _args, _arity, _blck) -> Ok res
-        | Return  (_exp)    -> Ok res 
+        | Branch  (If (ex, idcl, edcl)) -> 
+            let* res' = expresolve ex res in
+            let* res' = dclresolve idcl res' in
+            (match edcl with 
+                | Some els -> 
+                    dclresolve els res' 
+                | None -> 
+                    Ok res'
+            )
+        | Loop    (_loop)   -> 
+            (match _loop with
+                | While (expr, decl) -> 
+                    let* res' = expresolve expr res in
+                    dclresolve decl res'
+                | For (loopinit, cond, incrmt, body) ->
+                    let* res' = (match loopinit with 
+                        | LoopDecl (_n, _exp) -> 
+                           expresolve _exp res
+                        | LoopStmt (_ex) -> 
+                            expresolve _ex res
+                    ) in 
+                    let* res' = expresolve cond   res' in
+                    let* res' = expresolve incrmt res' in
+                    dclresolve body res'
+            )
+        | FunDecl (_name, _args, _arity, _blck) -> 
+            let res' = Resolver.declare _name res 
+                |> Resolver.define  _name 
+                |> Resolver.begin_scope 
+            in 
+            let res' = List.fold_left (fun acc _par ->  
+                (match _par with 
+                    | VarIdent name -> 
+                        Resolver.declare name acc 
+                        |> Resolver.define name 
+                    | _ -> acc
+                )
+            ) res' _args in 
+            let* res' = dclresolve _blck res' in 
+            let  res' = Resolver.end_scope res' in 
+            Ok res'
+        | Return  (_exp)    -> 
+            expresolve _exp res
     )
 
-and prgresolve res { state; _ } =
+and prgresolve { state; _ } res =
     List.fold_left (fun acc dcl -> 
         match acc with 
-        | Ok r -> dclresolve r dcl 
+        | Ok r -> dclresolve dcl r 
         | e    -> e 
     ) (Ok res) state
 ;;
@@ -270,7 +350,7 @@ and _funcblock  (l, c) fncseq =
     | Some ((IDENTIFIER name, l, c), more) -> 
         (match Seq.uncons more with
         | Some ((LEFT_PAREN, l, c), more') -> 
-            let* exp, rem = _callexpr  (l, c) name more' in
+            let* exp, rem = _callexpr (l, c) name more' in
             (match exp with
                 | Call (exl, name, arty) -> 
                     let* exl' = List.fold_left (fun acc ac -> 

@@ -26,14 +26,14 @@ module Resolver = struct
         ({ locals=ScopeMap.empty } :: res)
     ;;
 
-    let declare (res: t) name = 
+    let declare name (res: t)= 
         match res with 
         | { locals } :: rest -> 
             { locals=(ScopeMap.add name false locals); } :: rest 
         | _ -> res
     ;;
 
-    let define (res: t) name = 
+    let define name (res: t) = 
         match res with 
         | { locals } :: rest -> 
             { locals=(ScopeMap.add name true locals); } :: rest 
