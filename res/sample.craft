@@ -101,6 +101,7 @@
 
 // {
 //     if (x > 0) { 
+//        // initializer reuse error is considered an error in resolver!!
 //         var x = x + 2223; 
 //     }
 //     print "x is ";

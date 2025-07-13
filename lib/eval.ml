@@ -233,31 +233,29 @@ let eval_exprs (Program {state=el;errs; resl }) =
                     let oenv = Env.parent env in
                     (match t.state with
                         | (Stmt (Ret _l)) :: _ -> 
-                            { prg=(Program { state=(t.state @ s.state);
-                                        errs=(t.errs @ s.errs); resl }); env=oenv }
+                            { prg=(Program { state=(t.state @ s.state); errs=(t.errs @ s.errs); resl }); env=oenv }
                         |  _ ->
-                            foldast (({ state=(t.state @ s.state); errs=(t.errs
-                                        @ s.errs); resl }), oenv) more
+                            foldast (({ state=(t.state @ s.state); errs=(t.errs @ s.errs); resl }), oenv) more
                     )
                 | Branch (If (exp, ifblck, elseblk)) ->
                     (match eval env exp with
                         | Ok ((Bool b), env) -> 
                             if b then
-                                let env' = Env.spawn env in 
+                                (*let env' = Env.spawn env in *)
                                 let {env;prg=(Program t)} = foldast ({ state=[];
-                                            errs=[]; resl }, env') (Seq.return ifblck) in
-                                let oenv = Env.parent env in
+                                            errs=[]; resl }, env) (Seq.return ifblck) in
+                                (*let oenv = Env.parent env in*)
                                 foldast (({ state=(t.state @ s.state);
-                                            errs=(t.errs @ s.errs); resl }), oenv) more
+                                            errs=(t.errs @ s.errs); resl }), env) more
                             else
                                 (match elseblk with
                                 | Some els ->
-                                    let env' = Env.spawn env in 
+                                    (*let env' = Env.spawn env in *)
                                     let {env;prg=(Program t)} = foldast ({
-                                                    state=[]; errs=[]; resl }, env') (Seq.return els) in
-                                    let oenv = Env.parent env in
+                                                    state=[]; errs=[]; resl }, env) (Seq.return els) in
+                                    (*let oenv = Env.parent env in*)
                                     foldast (({ state=(t.state @ s.state);
-                                                    errs=(t.errs @ s.errs); resl }), oenv) more 
+                                                    errs=(t.errs @ s.errs); resl }), env) more 
                                 | _ ->
                                     foldast (s, env) more
                                 )
@@ -274,12 +272,12 @@ let eval_exprs (Program {state=el;errs; resl }) =
                             | Ok ((Bool b), env') -> 
                                 (* can be optimized *)
                                 if b then
-                                    let env'' = Env.spawn env' in 
+                                    (*let env'' = Env.spawn env' in *)
                                     let {env;prg=(Program t)} = foldast ({
-                                                state=[]; errs=[]; resl }, env'') (Seq.return loopblk) in
-                                    let oenv = Env.parent env in
+                                                state=[]; errs=[]; resl }, env') (Seq.return loopblk) in
+                                    (*let oenv = Env.parent env in*)
                                     loop (({ state=(t.state @ s.state);
-                                                errs=(t.errs @ s.errs); resl }), oenv)
+                                                errs=(t.errs @ s.errs); resl }), env)
                                 else
                                     foldast (s, env') more
                             | Ok (l, env) ->
@@ -309,7 +307,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
 
                 | Loop (For (init, _condn, _assgn, _blck)) ->
 
-                    let env' = Env.spawn env in
+                    (*let env' = Env.spawn env in*)
                     let blk  = Seq.return _blck in
 
                     let rec check (s, env) = 
@@ -331,12 +329,12 @@ let eval_exprs (Program {state=el;errs; resl }) =
                             ({ s with errs = (err :: s.errs) }, env')
                         | Error err -> 
                             let err = Unhandled (Eval, err)  in
-                            ({ s with errs = (err :: s.errs) }, env')
+                            ({ s with errs = (err :: s.errs) }, env)
                     in 
 
                     match init with
                     | LoopDecl (name, exp) ->
-                        (match eval env' exp with
+                        (match eval env exp with
                             | Ok (o, env') ->
 
                                 let s'   = { s with state = ((mkraw o) :: s.state) } in 
@@ -344,17 +342,17 @@ let eval_exprs (Program {state=el;errs; resl }) =
                                 let (s'', env'') = check (s', env') in
 
                                 foldast ({ state=(s''.state @ s'.state);
-                                            errs=(s''.errs @ s'.errs); resl }, Env.parent env'')  more
+                                            errs=(s''.errs @ s'.errs); resl }, env'')  more
 
                             | Error err -> 
                                 foldast ({ s with errs = ((Unhandled (Eval, err)) :: s.errs) }, env) more
                         )
                     | LoopStmt _st ->
-                        match eval env' _st with
+                        match eval env _st with
                         | Ok (o, env') -> 
                             let (s'', env'') = check ({ s with state = ((mkraw o) :: s.state) }, env') in
                             foldast ({ state=(s''.state @ s.state);
-                                        errs=(s''.errs @ s.errs); resl }, Env.parent env'')  more
+                                        errs=(s''.errs @ s.errs); resl }, env'')  more
                         | Error err -> 
                             foldast ({ s with errs = ((Unhandled (Eval, err)) :: s.errs) }, env) more
                 )

@@ -171,7 +171,7 @@ let rec absolve name res =
         Ok res
     | _ -> 
         (* it is likely in the globals environment!! *)
-        let _ = Format.printf "'%s' is global??\n" name in
+        (*let _ = Format.printf "'%s' is global??\n" name in*)
         Ok res
 
 and expresolve exp res = 

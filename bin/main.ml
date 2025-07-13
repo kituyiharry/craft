@@ -46,9 +46,10 @@ let runfile fname =
         let ps = Craft.Ast.prgresolve ast (Craft.Resolver.Resolver.empty) in 
         let _ = (match ps with
             | Ok _  -> 
-                let _ = Format.printf "we resolved ok i guess\n" in
+                (*let _ = Format.printf "we resolved ok i guess\n" in*)
                 () 
-            | Error e -> (Format.printf "resolver error:  %s!!" e)
+            | Error e -> 
+                (Format.printf "resolver error:  %s!!" e)
         )
         in p
     )
