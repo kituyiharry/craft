@@ -1,3 +1,7 @@
+module ScopeMap = Map.Make (String);;
+type scope  = (bool ScopeMap.t) [@opaque] ;;
+type lookup = (int ScopeMap.t)  [@opaque] ;;
+
 module Resolver = struct 
 
     (*
@@ -10,56 +14,55 @@ module Resolver = struct
         therefore in its own initializer, if true then it is "initialized". We
         take the former as an Error!
     *)
-
-    module ScopeMap = Map.Make (String);;
-
-
-    type scope = { 
-        locals: (bool ScopeMap.t) [@opaque] 
+    type t = { 
+            scopes: (scope list) [@opaque]
+        ;   locals: (lookup)     [@opaque]
     } [@@deriving show];;
 
-    type t     = (scope list) [@@deriving show];;
-
-    let empty = []
-
-    let begin_scope (res: t) = 
-        ({ locals=ScopeMap.empty } :: res)
+    let empty = { scopes=[]; locals=ScopeMap.empty }
     ;;
 
-    let declare name (res: t)= 
+    let begin_scope ({ scopes=res;_ } as v: t) = 
+        ({ v with scopes=(ScopeMap.empty :: res) })
+    ;;
+
+    let declare name ({ scopes=res;_ } as v: t)= 
         match res with 
-        | { locals } :: rest -> 
-            { locals=(ScopeMap.add name false locals); } :: rest 
-        | _ -> res
+        | locals :: rest -> 
+            ({ v with scopes=(ScopeMap.add name false locals) :: rest }) 
+        | _ -> v
     ;;
 
-    let define name (res: t) = 
+    let define name ({ scopes=res; _ } as v: t) = 
         match res with 
-        | { locals } :: rest -> 
-            { locals=(ScopeMap.add name true locals); } :: rest 
-        | _ -> res
+        | locals :: rest -> 
+            ({ v with scopes=(ScopeMap.add name true locals) :: rest }) 
+        | _ -> v
     ;;
 
-    let end_scope = List.tl
+    let end_scope ({ scopes=res; _ } as v: t) = { v with scopes = List.tl res }
     ;;
 
     let show (res: t) = 
-            let sb = Buffer.create 200 in 
-            let _  = Buffer.add_string sb "Scopes: -> [  " in
-            let leadtab = "===>  " in
-            let _ = List.iter (fun { locals } -> 
-                let _ = Buffer.add_string sb (leadtab ^ "locals => { \n") in
-                let _ = ScopeMap.iter (fun k v -> 
-                    let _ = Buffer.add_string sb ("\t") in 
-                    let _ = Buffer.add_string sb (k) in 
-                    let _ = Buffer.add_string sb (" => ") in 
-                    let _ = Buffer.add_string sb ((Bool.to_string v)) in 
-                    let _ = Buffer.add_string sb ("\n") in 
-                    ()
-                ) locals in 
-                Buffer.add_string sb (leadtab ^ "} \n")
-            ) res in
-            let _  = Buffer.add_string sb "  ]" in
-            Buffer.contents sb
+        let sb = Buffer.create 200 in 
+        let _  = Buffer.add_string sb "Scopes: -> [  " in
+        let leadtab = " " in
+        let _ = ScopeMap.iter (fun k v -> 
+            let _ = Buffer.add_string sb (leadtab ^ (k)) in 
+            let _ = Buffer.add_string sb (leadtab ^ (" => ")) in 
+            let _ = Buffer.add_string sb (leadtab ^ ((Int.to_string v))) in 
+            ()
+        ) res.locals in 
+        let _ = Buffer.add_string sb "  ]" in
+        Buffer.contents sb
     ;;
+
 end
+
+let show_lookup t =
+    Resolver.show { Resolver.empty with locals=t }
+;;
+
+let pp_lookup (_f) t = 
+    Format.printf "%s" (Resolver.show { Resolver.empty with locals=t })
+;;

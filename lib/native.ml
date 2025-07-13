@@ -11,7 +11,7 @@ let env _env _args =
     Ok (Nil, _env) 
 ;;
 
-let impl (name) (_interp: ((context * Ast.craftenv) -> decl Seq.t -> craftsrc)) (_args: lit list) (block) = 
+let impl name (resl: lookup) (_interp: ((context * Ast.craftenv) -> decl Seq.t -> craftsrc)) (_args: lit list) (block) = 
     (*fun  env and expression *)
     (fun (_env: craftenv) (_args': lit list) -> 
         (* resolve arguments with their local names (map params to vars) *)
@@ -27,7 +27,7 @@ let impl (name) (_interp: ((context * Ast.craftenv) -> decl Seq.t -> craftsrc)) 
         ) in 
 
         (* run the interpreter! *)
-        let { prg=(Program({ errs; state; _ })); env } = _interp ({ state=[]; errs=[]; resl=(Resolver.empty) }, e') (Seq.return block) in
+        let { prg=(Program({ errs; state; _ })); env } = _interp ({ state=[]; errs=[]; resl=resl }, e') (Seq.return block) in
 
         match (state, errs) with
         | (((Stmt (Ret l)) :: _rest), []) -> 

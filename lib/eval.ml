@@ -4,35 +4,36 @@ open Func;;
 
 let (let*) = Result.bind;;
 
-let rec eval (env) = function
+let rec eval (env) (res) = function
     | Literal  l  -> (match l with
-            | (VarIdent n) -> let* g = (Env.get env n) in 
+            | (VarIdent n) -> 
+                   let* g = (Env.fetch env res n) in 
                    Ok (g, env)
             | _ -> Ok (l, env)
         )
     | Assign (p, expr) -> 
-        let* (g, env') = eval env expr in 
+        let* (g, env') = eval env res expr in 
         let*     env'' = Env.assign env' p g in
         Ok (g, env'')
-    | Grouping g -> eval env g
+    | Grouping g -> eval env res g
     | Unhandled (_t, s) -> Error s
     | Call (_args, _ident, _arity) -> 
         (* resolve all arguments in case they are expressions *)
         let* (_args', _env') = List.fold_left (fun call ex ->
             (match call with 
                 | (Ok (args, env')) -> 
-                    let* (g', env'') = eval env' ex in
+                    let* (g', env'') = eval env' res ex in
                     Ok ((g' :: args), env'')
                 | e -> e
             )
         ) (Ok ([], env)) _args in
 
-        let _env''  = Env.spawn _env' in
-        let* (l, e) = Func.call { func=_ident;arty=_arity;envr=_env'';argl=_args'; } in 
-
-        Ok (l, Env.parent e)
+        (*let _env''  = Env.spawn _env' in*)
+        let* (l, e) = Func.call { scop=res;func=_ident;arty=_arity;envr=_env';argl=_args'; } in 
+        (*Ok (l, Env.parent e)*)
+        Ok (l, e)
     | Unary (op, u) ->
-        let* (u', env') = eval env u in
+        let* (u', env') = eval env res u in
         (match op with
             | Negate -> (match u' with
                     | Number f -> (Ok (Number (Float.neg f), env'))
@@ -46,8 +47,8 @@ let rec eval (env) = function
     | Binary (l, op, r) ->
         (match op with
             | Compr o -> 
-                let* (l', env') = eval env  l in
-                let* (r', env') = eval env' r in
+                let* (l', env') = eval env  res l in
+                let* (r', env') = eval env' res r in
                 (match o with
                 | Greater    -> (match (l', r') with
                     | (Number l'', Number r'') -> 
@@ -77,8 +78,8 @@ let rec eval (env) = function
                     )
                 )
             | Operator o -> 
-                let* (l', env') = eval env  l in
-                let* (r', env') = eval env' r in
+                let* (l', env') = eval env  res l in
+                let* (r', env') = eval env' res r in
                 (match o with
                 | Eq    -> (match ( l',  r') with
                     | (Bool   l'', Bool   r'') -> Ok (Bool ((=) l'' r''), env')
@@ -94,8 +95,8 @@ let rec eval (env) = function
                     )
                 )
             | Term     t -> 
-                let* (l', env') = eval env  l in
-                let* (r', env') = eval env' r in
+                let* (l', env') = eval env  res l in
+                let* (r', env') = eval env' res r in
                 (match ( l',  r') with
                     | (Number l'', Number r'') -> (match t with
                         | Add -> Ok (Number (Float.add l'' r''), env')
@@ -109,8 +110,8 @@ let rec eval (env) = function
                         Error (TypeError (x, op, y))
                 )
             | Factor   f -> 
-                let* (l', env') = eval env  l in
-                let* (r', env') = eval env' r in
+                let* (l', env') = eval env  res l in
+                let* (r', env') = eval env' res r in
                 (match ( l',  r') with
                     | (Number l'', Number r'') -> (match f with
                         | Div -> Ok (Number (Float.div l'' r''), env')
@@ -121,13 +122,13 @@ let rec eval (env) = function
                 )
             | Logic log -> 
                 (*  Short Circuit *)
-                let* (l', env') = eval env  l in
+                let* (l', env') = eval env res l in
                 (match (l') with 
                     | (Bool l'') -> 
                         (match log with
                             | And -> 
                                 if l'' then
-                                    let* (r', env') = eval env' r in
+                                    let* (r', env') = eval env' res r in
                                     Ok (r', env') 
                                 else
                                     Ok (Bool (l''), env')
@@ -135,7 +136,7 @@ let rec eval (env) = function
                                 if l'' then
                                     Ok (Bool (l''), env')
                                 else
-                                    let* (r', env') = eval env' r in
+                                    let* (r', env') = eval env' res r in
                                     Ok (r', env') 
                         )
                     | (x) ->
@@ -173,7 +174,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                     { prg=(Program { s with state=(_ast :: s.state) } ); env=env }
                 | Stmt (Raw (Eval (Literal Eol)))  ->
                     foldast (s, env) more
-                | Stmt (Raw (Eval e'))  -> (match (eval env e') with
+                | Stmt (Raw (Eval e'))  -> (match (eval env resl e') with
                     |  Ok (o, env')    ->
                         foldast ({ s with state = ((mkraw o) :: s.state) }, env') more
                     |  Error err ->
@@ -181,7 +182,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                         (* FIXME: tokens ?? *)
                         foldast ({ s with errs= (Unhandled (Eval, err) :: s.errs) }, env) more
                     )
-                | Stmt ((Side (Effect (Println e')))) -> (match (eval env e') with
+                | Stmt ((Side (Effect (Println e')))) -> (match (eval env resl e') with
                     |  Ok (o, env')    -> let _ = (match o with
                             | (Bool b) ->
                                 Format.printf "%b\n" b
@@ -199,7 +200,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                     |  Error err ->
                         foldast ({ s with errs=(Unhandled (Eval, err) :: s.errs) }, env) more
                     )
-                | Stmt ((Side (Effect (Print e')))) -> (match (eval env e') with
+                | Stmt ((Side (Effect (Print e')))) -> (match (eval env resl e') with
                     |  Ok (o, env')    -> let _ = (match o with
                             | (Bool b) ->
                                 Format.printf "%b" b
@@ -218,7 +219,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                         foldast ({ s with errs=(Unhandled (Eval, err) :: s.errs) }, env) more
                     )
                 | VarDecl (name, exp) ->
-                    (match eval env exp with
+                    (match eval env resl exp with
                     | Ok (o, env') ->
                             foldast (
                                 { s with state = ((mkraw o) :: s.state) }, 
@@ -238,7 +239,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                             foldast (({ state=(t.state @ s.state); errs=(t.errs @ s.errs); resl }), oenv) more
                     )
                 | Branch (If (exp, ifblck, elseblk)) ->
-                    (match eval env exp with
+                    (match eval env resl exp with
                         | Ok ((Bool b), env) -> 
                             if b then
                                 (*let env' = Env.spawn env in *)
@@ -268,7 +269,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                     )
                 | Loop (While (exp, loopblk)) ->
                     let rec loop (s, env) =
-                        (match eval env exp with
+                        (match eval env resl exp with
                             | Ok ((Bool b), env') -> 
                                 (* can be optimized *)
                                 if b then
@@ -293,12 +294,12 @@ let eval_exprs (Program {state=el;errs; resl }) =
 
                 | FunDecl (name, args, arity, block) -> 
 
-                    let impl = Native.impl name (foldast) args block in
+                    let impl = Native.impl name resl (foldast) args block in
                     let env = Env.define name (FunImpl (arity, env, impl)) env in
                     foldast (s, env) more
 
                 | Return exp ->
-                        (match eval env exp with 
+                        (match eval env resl exp with 
                             | Ok (l, env') -> 
                                 { prg=Program ({ s with state=((Stmt (Ret l)) :: s.state) }); env=env' }
                             | Error e ->
@@ -311,11 +312,11 @@ let eval_exprs (Program {state=el;errs; resl }) =
                     let blk  = Seq.return _blck in
 
                     let rec check (s, env) = 
-                        match eval env _condn with
+                        match eval env resl _condn with
                         | Ok ((Bool b), env') -> 
                             if b then
                                 let {env=env';prg=(Program s')} = foldast (s, env) blk in
-                                (match eval env' _assgn with
+                                (match eval env' resl _assgn with
                                     | Ok (p, env'') -> 
                                         check ({ s' with state=((mkraw p) :: s'.state) }, env'')
                                     | Error err -> 
@@ -334,7 +335,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
 
                     match init with
                     | LoopDecl (name, exp) ->
-                        (match eval env exp with
+                        (match eval env resl exp with
                             | Ok (o, env') ->
 
                                 let s'   = { s with state = ((mkraw o) :: s.state) } in 
@@ -348,7 +349,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                                 foldast ({ s with errs = ((Unhandled (Eval, err)) :: s.errs) }, env) more
                         )
                     | LoopStmt _st ->
-                        match eval env _st with
+                        match eval env resl _st with
                         | Ok (o, env') -> 
                             let (s'', env'') = check ({ s with state = ((mkraw o) :: s.state) }, env') in
                             foldast ({ state=(s''.state @ s.state);

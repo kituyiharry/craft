@@ -10,8 +10,8 @@ let (let*) = Result.bind
 let _MaxArgs = 255 (* maximum number of arguments in a function call *)
 
 type cursor = {
-        linenum: int 
-    ;   colmnum: int
+        line: int 
+    ;   colm: int
 }[@@deriving show];; 
 
 type tokseq = (tokentype * int * int) Seq.t 
@@ -53,7 +53,7 @@ lit =
 and context = {
       state: decl list 
     ; errs : expr list
-    ; resl : Resolver.t
+    ; resl : lookup
 }
 
 and crafterr = 
@@ -159,34 +159,33 @@ and source =
 type interp = (craftenv -> expr -> (lit * craftenv, crafterr) result)
 
 (* scope resolution helpers *)
-let rec absolve name res = 
+let rec absolve name ({ Resolver.scopes=r; locals } as res) = 
 
-    let _len = List.length res in 
+    let _len = List.length r in 
     (* since we push to the front *)
-    let m =List.find_index (fun { Resolver.locals } -> 
-        Resolver.ScopeMap.mem name locals
-    ) res in
+    let m =List.find_index (fun locals -> 
+        ScopeMap.mem name locals
+    ) r in
     match m with
     | Some idx -> 
         let _ = Format.printf "Found %s at index: %d of %d\n" name idx _len in
-        (* interp.resolve ??? *)
-        Ok res
+        Ok { res with locals=(ScopeMap.add name idx locals) }
     | _ -> 
         (* it is likely in the globals environment!! *)
         (*let _ = Format.printf "'%s' is global??\n" name in*)
         Ok res
 
-and expresolve exp res = 
+and expresolve exp ({ Resolver.scopes=r; _ } as res) = 
     (match exp with
         | Literal (_lit) -> 
             (match _lit with
                 | VarIdent name -> 
-                    (match res with
-                        | { Resolver.locals } :: _rem -> 
-                            (match Resolver.ScopeMap.find_opt name locals  with 
+                    (match r with
+                        | locals :: _rem -> 
+                            (match ScopeMap.find_opt name locals  with 
                                 | Some false ->
                                     Error ("Initializer reuse of " ^ name)
-                                |  _ -> absolve name res 
+                                |  _ -> absolve name res
                             )
                         | [] -> 
                             Ok res
@@ -213,6 +212,7 @@ and expresolve exp res =
             expresolve _expr res' 
         | Unhandled (_stage,  _crafterr) -> Error ("Unhandled node: " ^ (show_crafterr _crafterr))
         | Call      (_callargs, _funcname, _callarity) -> 
+            let* res = absolve _funcname res in
             List.fold_left (fun acc v ->
                 match acc with 
                 | Ok res -> expresolve v res
@@ -373,10 +373,10 @@ and _funcblock  (l, c) fncseq =
                     Error (Unhandled (Parse, (BadExp (e, None))), fncseq)
             )
         | _ ->
-            Error (Unhandled (Parse, (Unexpected ({linenum=l;colmnum=c}, LEFT_PAREN))), fncseq)
+            Error (Unhandled (Parse, (Unexpected ({line=l;colm=c}, LEFT_PAREN))), fncseq)
         )
     | _ -> 
-        Error (Unhandled (Parse, (Unexpected ({linenum=l;colmnum=c}, LEFT_PAREN))), fncseq)
+        Error (Unhandled (Parse, (Unexpected ({line=l;colm=c}, LEFT_PAREN))), fncseq)
 
 and _forstmt  (l, c) fseq =
 
@@ -398,13 +398,13 @@ and _forstmt  (l, c) fseq =
                                         let _forstmt = (For ((LoopDecl dcl), exp, asg, loopblk)) in
                                         Ok (Loop _forstmt, fin)
                                     | _ -> 
-                                        Error (Unhandled (Parse, (Unexpected ({linenum=l;colmnum=c}, SEMICOLON))), fseq)
+                                        Error (Unhandled (Parse, (Unexpected ({line=l;colm=c}, SEMICOLON))), fseq)
                                 )
                             | _ ->
-                                Error (Unhandled (Parse, (Unexpected ({linenum=l;colmnum=c}, SEMICOLON))), fseq)
+                                Error (Unhandled (Parse, (Unexpected ({line=l;colm=c}, SEMICOLON))), fseq)
                         )
                     | _ ->
-                        Error (Unhandled (Parse, (Unexpected ({linenum=l;colmnum=c}, LEFT_PAREN))), fseq)
+                        Error (Unhandled (Parse, (Unexpected ({line=l;colm=c}, LEFT_PAREN))), fseq)
                 )
             | Stmt (Raw (Eval evl)) ->
                 (match Seq.uncons more' with
@@ -419,21 +419,21 @@ and _forstmt  (l, c) fseq =
                                         let _forstmt = (For ((LoopStmt evl), exp, asg, loopblk)) in
                                         Ok (Loop _forstmt, fin)
                                     | _ -> 
-                                        Error (Unhandled (Parse, (Unexpected ({linenum=l;colmnum=c}, SEMICOLON))), fseq)
+                                        Error (Unhandled (Parse, (Unexpected ({line=l;colm=c}, SEMICOLON))), fseq)
                                 )
                             | _ ->
-                                Error (Unhandled (Parse, (Unexpected ({linenum=l;colmnum=c}, SEMICOLON))), fseq)
+                                Error (Unhandled (Parse, (Unexpected ({line=l;colm=c}, SEMICOLON))), fseq)
                         )
                     | _ ->
-                        Error (Unhandled (Parse, (Unexpected ({linenum=l; colmnum=c}, LEFT_PAREN))), fseq)
+                        Error (Unhandled (Parse, (Unexpected ({line=l; colm=c}, LEFT_PAREN))), fseq)
                 )
             | _ -> 
-                Error (Unhandled (Parse, (Unexpected ({linenum=l; colmnum=c}, LEFT_PAREN))), fseq)
+                Error (Unhandled (Parse, (Unexpected ({line=l; colm=c}, LEFT_PAREN))), fseq)
         )
     | Some ((_, l,c), _) -> 
-        Error (Unhandled (Parse, (Unexpected ({linenum=l; colmnum=c}, LEFT_PAREN))), fseq)
+        Error (Unhandled (Parse, (Unexpected ({line=l; colm=c}, LEFT_PAREN))), fseq)
     | _ -> 
-        Error (Unhandled (Parse, (Unexpected ({linenum=l; colmnum=c}, LEFT_PAREN))), fseq)
+        Error (Unhandled (Parse, (Unexpected ({line=l; colm=c}, LEFT_PAREN))), fseq)
 
 and _whilestmt  (l, c) ifseq = 
 
@@ -445,12 +445,12 @@ and _whilestmt  (l, c) ifseq =
             let* (loopbr, left') = _program  left in 
             Ok (Loop (While (exp, loopbr)), left')
         | _ ->
-            Error (Unhandled (Parse, (Unmatched ({linenum=l;colmnum=c}, RIGHT_PAREN))), ifseq)
+            Error (Unhandled (Parse, (Unmatched ({line=l;colm=c}, RIGHT_PAREN))), ifseq)
         )
     | Some ((_, l,c), _) -> 
-        Error (Unhandled (Parse, (Unexpected ({ linenum=l; colmnum=c}, LEFT_PAREN))), ifseq)
+        Error (Unhandled (Parse, (Unexpected ({ line=l; colm=c}, LEFT_PAREN))), ifseq)
     | _ -> 
-        Error (Unhandled (Parse, (Unexpected ({ linenum=l; colmnum=c}, LEFT_PAREN))), ifseq)
+        Error (Unhandled (Parse, (Unexpected ({ line=l; colm=c}, LEFT_PAREN))), ifseq)
 
 and _ifstmts  (l, c) ifseq = 
 
@@ -468,12 +468,12 @@ and _ifstmts  (l, c) ifseq =
                     Ok (Branch (If (exp, thenbr, None)), left')
             )
         | _ ->
-            Error (Unhandled (Parse, (Unexpected ({linenum=l;colmnum=c}, RIGHT_PAREN))), ifseq)
+            Error (Unhandled (Parse, (Unexpected ({line=l;colm=c}, RIGHT_PAREN))), ifseq)
         )
     | Some ((_, l,c), _) -> 
-        Error (Unhandled (Parse, (Unexpected ({linenum=l;colmnum=c}, LEFT_PAREN))), ifseq)
+        Error (Unhandled (Parse, (Unexpected ({line=l;colm=c}, LEFT_PAREN))), ifseq)
     | _ -> 
-        Error (Unhandled (Parse, (Unexpected ({linenum=l;colmnum=c}, LEFT_PAREN))), ifseq)
+        Error (Unhandled (Parse, (Unexpected ({line=l;colm=c}, LEFT_PAREN))), ifseq)
 
 and _blockstmts  (l, c) stmts bseq =
     let rec check  (l, c) stmts bseq =
@@ -492,7 +492,7 @@ and _blockstmts  (l, c) stmts bseq =
                     check  (l, c) (exp :: stmts) more'
             )
         | _ -> 
-            Error (Unhandled (Parse, (Unmatched ({linenum=l;colmnum=c}, RIGHT_BRACE))), bseq)
+            Error (Unhandled (Parse, (Unmatched ({line=l;colm=c}, RIGHT_BRACE))), bseq)
     in check  (l, c) stmts bseq
 
 and _assign  aseq = 
@@ -539,13 +539,13 @@ and _vardecl vseq =
             | Some ((SEMICOLON, _l, _c), tseq'') -> 
                 Ok (VarDecl (ident, (Literal Nil)), tseq'')
             | Some ((t, l, c), tseq'') -> 
-                Error ((Unhandled (Parse, (Unexpected ({linenum=l;colmnum=c}, t)))), tseq'')
+                Error ((Unhandled (Parse, (Unexpected ({line=l;colm=c}, t)))), tseq'')
             | _ -> 
                 let e = "expected var identifier expr" in
                 Error ((Unhandled (Parse, (EndOfSeq e))), tseq')
         )
     | Some((p , l, c), _tseq') -> 
-        Error ((Unhandled (Parse, Unexpected ({linenum=l;colmnum=c}, p))), vseq)
+        Error ((Unhandled (Parse, Unexpected ({line=l;colm=c}, p))), vseq)
     | _ -> 
         let e = "expected identifier token" in
         Error ((Unhandled (Parse, EndOfSeq e)), vseq)
@@ -731,7 +731,7 @@ and _callexpr  (l, c) ex ce =
     let size = 0 in
     let rec check  size args cs = 
         if size >= _MaxArgs then 
-            Error (Unhandled (Parse, MaxArgs ({linenum=l;colmnum=c}, ex)), cs)
+            Error (Unhandled (Parse, MaxArgs ({line=l;colm=c}, ex)), cs)
         else
         (match Seq.uncons cs with
             | Some ((RIGHT_PAREN, _l, _c), r) ->
@@ -766,13 +766,13 @@ and primary  pseq =
                         Ok (Grouping expr', r'')
                     | Some ((_, l, c), _r'') -> 
                         let r''' = perform (Synchronize r') in 
-                        Error (Unhandled (Parse, Unmatched ({linenum=l;colmnum=c}, RIGHT_PAREN)), r''')
+                        Error (Unhandled (Parse, Unmatched ({line=l;colm=c}, RIGHT_PAREN)), r''')
                     | _ -> 
                         let r''' = perform (Synchronize r') in 
-                        Error (Unhandled (Parse, Unmatched ({linenum=l'; colmnum=c'}, RIGHT_PAREN)), r''')
+                        Error (Unhandled (Parse, Unmatched ({line=l'; colm=c'}, RIGHT_PAREN)), r''')
                 )
             | t -> 
-                Error (Unhandled (Parse, Unexpected ({linenum=l'; colmnum=c'}, t)), r)
+                Error (Unhandled (Parse, Unexpected ({line=l'; colm=c'}, t)), r)
         )
     | None ->
         Error ((Literal Eol), pseq)
@@ -784,10 +784,16 @@ let parse tseq =
         match  _program ts with
         | Ok (stmt, more) ->
             if Seq.is_empty more then
-                Ok (Program ({ s with
+                let c = ({ s with
                     state = (List.rev (stmt :: s.state)); 
                     resl  = s.resl;
-                }))
+                }) in 
+                match prgresolve c (Resolver.empty) with 
+                | Ok t ->
+                    Ok (Program ({ c with resl=t.locals }))
+                | Error e ->  
+                    let _ = Format.printf "Err Resolving!! -> %s\n" e in 
+                    Ok (Program (c))
             else
                 (match Seq.uncons more with
                     | Some ((SEMICOLON, _l', _c'), more') -> 
@@ -795,7 +801,7 @@ let parse tseq =
                     | _ ->
                         _parse { s with state=(stmt :: s.state) } more)
         | Error (e, more) -> 
-            _parse { s with errs=(e :: s.errs); resl=res } more
+            _parse { s with errs=(e :: s.errs); resl=ScopeMap.empty } more
         (* failover for parse errors *)
         | effect Synchronize (t), k -> 
             let t' = Seq.drop_while (fun (p, _l, _c) -> 
@@ -816,6 +822,6 @@ let parse tseq =
                 | _ -> 
                     continue k t'
             )
-    in _parse { state=[]; errs=[]; resl=res; } tseq
+    in _parse { state=[]; errs=[]; resl=res.locals; } tseq
 ;;
 
