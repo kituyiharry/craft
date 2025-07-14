@@ -7,7 +7,7 @@
 //         let g = 10001 = 12 + 112 * 999
 //     }
 // ;
-/** This is a multiline comment */
+// /** This is a multiline comment */
 // fun g = 
 // {
 //     x + x * 1 mod 2
@@ -90,14 +90,18 @@
 // printl y;
 // 
 // 
-// fun fib(n) {
-//   if (n <= 1) return n;
-//   return fib(n - 2) + fib(n - 1);
-// }
-// 
-// for (var i = 0; i < 10; i = i + 1) {
-//   printl fib(i);
-// }
+
+fun fib(n) {
+  if (n <= 1) return n;
+  return fib(n - 2) + fib(n - 1);
+}
+
+var f = 0;
+for (f = 0; f < 10; f = f + 1) {
+   print "fib "; print f; print " is "; printl fib(f);
+}
+
+ // print "I is "; print f;
 
 // {
 //     if (x > 0) { 
@@ -115,37 +119,46 @@
 // 
 // print "and now x is ";
 // printl x;
-
-// fun makeCounter() {
-//   var i = 0;
-//   fun count() {
-//     i = i + 1;
-//     printl i;
-//   }
-//   return count;
-// }
-
-// var counter = makeCounter();
-
-// counter(); // "1".
-// counter(); // "2".
-
-// printl "";
-
-// fun factorial(n) {
-//     if (n == 0) {
-//         return 1;
-//     }
-//     return n * factorial(n - 1);
-// }
 // 
-// print "factorial 5 is ";
-// printl factorial(5);
+
+fun makeCounter() {
+  var i = 0;
+  fun count() {
+    i = i + 1;
+    printl i;
+  }
+  return count;
+}
+
+var counter = makeCounter();
+
+counter(); // "1".
+counter(); // "2".
+
+print "F idx is still "; printl f;
+
+fun factorial(n) {
+    if (n == 0) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+print "factorial 5 is ";
+printl factorial(5);
 
 var a = "global";
 {
+  var b = "block"; 
   fun showA() {
-    printl a;
+   printl a;
+   fun showB() {
+      printl a;
+      printl b;
+   }
+   showB();
+   var b = "innerBlock";
+   showB();
   }
   showA();
   var a = "block";

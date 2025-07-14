@@ -790,6 +790,7 @@ let parse tseq =
                 }) in 
                 match prgresolve c (Resolver.empty) with 
                 | Ok t ->
+                    let _ = Format.printf "locals are: %s\n" (Resolver.show t) in
                     Ok (Program ({ c with resl=t.locals }))
                 | Error e ->  
                     let _ = Format.printf "Err Resolving!! -> %s\n" e in 

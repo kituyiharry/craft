@@ -13,7 +13,7 @@ let rec eval (env) (res) = function
         )
     | Assign (p, expr) -> 
         let* (g, env') = eval env res expr in 
-        let*     env'' = Env.assign env' p g in
+        let*     env'' = Env.modify env' p g res in
         Ok (g, env'')
     | Grouping g -> eval env res g
     | Unhandled (_t, s) -> Error s
@@ -28,10 +28,10 @@ let rec eval (env) (res) = function
             )
         ) (Ok ([], env)) _args in
 
-        (*let _env''  = Env.spawn _env' in*)
+        let _env''  = Env.spawn _env' in
         let* (l, e) = Func.call { scop=res;func=_ident;arty=_arity;envr=_env';argl=_args'; } in 
-        (*Ok (l, Env.parent e)*)
-        Ok (l, e)
+        Ok (l, Env.parent e)
+        (*Ok (l, e)*)
     | Unary (op, u) ->
         let* (u', env') = eval env res u in
         (match op with
@@ -192,12 +192,13 @@ let eval_exprs (Program {state=el;errs; resl }) =
                                 Format.printf "%s\n" s
                             | Nil ->
                                 Format.printf "nil\n"
-                            |_ ->
+                            | _ ->
+                                Format.printf "unprintable!!!\n"
                                 (* TODO: runtime error *)
-                                ()
                         ) in
                         foldast ({ s with state = ((mkraw o) :: s.state) }, env') more
                     |  Error err ->
+                        let _ = Format.printf "Stmt error: %s\n" (show_crafterr err) in
                         foldast ({ s with errs=(Unhandled (Eval, err) :: s.errs) }, env) more
                     )
                 | Stmt ((Side (Effect (Print e')))) -> (match (eval env resl e') with
@@ -216,6 +217,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                         ) in
                         foldast ({ s with state = ((mkraw o) :: s.state) }, env') more
                     |  Error err ->
+                        let _ = Format.printf "Effect error: %s\n" (show_crafterr err) in
                         foldast ({ s with errs=(Unhandled (Eval, err) :: s.errs) }, env) more
                     )
                 | VarDecl (name, exp) ->
@@ -226,6 +228,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                                 (Env.define name o env')
                             ) more
                     | Error err -> 
+                        let _ = Format.printf "VarDecl error: %s\n" (show_crafterr err) in
                         foldast ({ s with errs = ((Unhandled (Eval, err)) :: s.errs) }, env) more)
                 | Block (stmts) ->
                     let env' = Env.spawn env in 

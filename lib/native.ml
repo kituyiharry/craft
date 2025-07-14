@@ -27,7 +27,9 @@ let impl name (resl: lookup) (_interp: ((context * Ast.craftenv) -> decl Seq.t -
         ) in 
 
         (* run the interpreter! *)
+        let e' = Env.spawn e' in
         let { prg=(Program({ errs; state; _ })); env } = _interp ({ state=[]; errs=[]; resl=resl }, e') (Seq.return block) in
+        let env = Env.parent env in 
 
         match (state, errs) with
         | (((Stmt (Ret l)) :: _rest), []) -> 

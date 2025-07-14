@@ -93,11 +93,9 @@ module Env = struct
 
     let rec get_at env name depth =   
         if depth = 0 then   
-            let v = ValEnv.find name env.env in
-            Ok (v)
+            get env name
         else
-            let f = get_at (Option.get env.par) name (depth - 1)
-            in 
+            let f = get_at (Option.get env.par) name (depth - 1) in 
             f
     ;;
 
