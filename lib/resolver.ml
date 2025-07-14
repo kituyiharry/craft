@@ -1,6 +1,6 @@
 module ScopeMap = Map.Make (String);;
 type scope  = (bool ScopeMap.t) [@opaque] ;;
-type lookup = (int ScopeMap.t)  [@opaque] ;;
+type lookup = (int  ScopeMap.t) [@opaque] ;;
 
 module Resolver = struct 
 

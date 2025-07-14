@@ -163,13 +163,11 @@ let rec absolve name ({ Resolver.scopes=r; locals } as res) =
 
     let _len = List.length r in 
     (* since we push to the front *)
-    let m =List.find_index (fun locals -> 
-        ScopeMap.mem name locals
-    ) r in
+    let m =List.find_index (ScopeMap.mem name) r in
     match m with
     | Some idx -> 
         let _ = Format.printf "Found %s at index: %d of %d\n" name idx _len in
-        Ok { res with locals=(ScopeMap.add name idx locals) }
+        Ok { res with locals=(ScopeMap.add name (idx) locals) }
     | _ -> 
         (* it is likely in the globals environment!! *)
         (*let _ = Format.printf "'%s' is global??\n" name in*)
@@ -184,7 +182,7 @@ and expresolve exp ({ Resolver.scopes=r; _ } as res) =
                         | locals :: _rem -> 
                             (match ScopeMap.find_opt name locals  with 
                                 | Some false ->
-                                    Error ("Initializer reuse of " ^ name)
+                                    Error ("Initializer reuse of " ^ name ^ " use new name possibly?" ^ show_expr exp)
                                 |  _ -> absolve name res
                             )
                         | [] -> 
