@@ -69,36 +69,31 @@
 // print "elapse is -> ";
 // printl (now2 - now1);
 
-// fun sayHi(first, last) {
-//   var r = "Hi, " + first; 
-//   if (true) {
-//     return r;
-//   }
-//   var s = r + " " + last + "!";
-//   return s;
-// }
+fun sayHi(first, last) {
+  var r = "Hi, " + first; 
+  var s = r + " " + last + "!";
+  return s;
+}
 
-// fun count(n) {
-//   if (n > 1) count(n - 1);
-//   // env();
-//   printl n;
-// }
+fun count(n) {
+  if (n > 1) count(n - 1);
+  // env();
+  printl n;
+}
 
-// count(3);
-// 
-// var y = sayHi("Dear", "Reader");
-// printl y;
-// 
-// 
+count(3);
+
+var y = sayHi("Dear", "Reader");
+printl y;
 
 fun fib(n) {
   if (n <= 1) return n;
   return fib(n - 2) + fib(n - 1);
 }
 
-var f = 0;
-for (f = 0; f < 10; f = f + 1) {
-   print "fib "; print f; print " is "; printl fib(f);
+// f is declared in global scope!!
+for (var i = 0; i < 10; i = i + 1) {
+   print "fib "; print i; print " is "; printl fib(i);
 }
 
  // print "I is "; print f;
@@ -135,7 +130,7 @@ var counter = makeCounter();
 counter(); // "1".
 counter(); // "2".
 
-print "F idx is still "; printl f;
+print "i idx is still "; printl i;
 
 fun factorial(n) {
     if (n == 0) {
@@ -152,13 +147,15 @@ var a = "global";
   var b = "block"; 
   fun showA() {
    printl a;
-   fun showB() {
+   fun showB(n) {
       printl a;
       printl b;
+      b = n;
    }
-   showB();
+   showB("next one");
    var b = "innerBlock";
-   showB();
+   showB("another one");
+   showB("")
   }
   showA();
   var a = "block";

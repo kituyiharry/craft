@@ -92,7 +92,9 @@ module Env = struct
     ;;
 
     let rec get_at env name depth =   
-        if depth = 0 then   
+        if Option.is_none env.par then
+            get env name
+        else if depth = 0 then 
             get env name
         else
             let f = get_at (Option.get env.par) name (depth - 1) in 
@@ -100,11 +102,14 @@ module Env = struct
     ;;
 
     let fetch env resl name = 
-        match Resolver.ScopeMap.find_opt name resl with
-        | Some depth -> 
-            get_at env name depth 
-        | _ -> 
-            Ok (ValEnv.find name (global env))
+        if Option.is_none env.par then
+            get env name
+        else
+            (match Resolver.ScopeMap.find_opt name resl with
+            | Some depth -> 
+                get_at env name depth 
+            | _ -> 
+                Ok (ValEnv.find name (global env)))
     ;;
 
     let rec assign env name value = 
@@ -119,7 +124,9 @@ module Env = struct
     ;;
 
     let rec assign_at env name value depth = 
-        if depth = 0 then
+        if Option.is_none env.par then
+            Ok ({ env with env=(ValEnv.add name value env.env) })
+        else if depth = 0 then
             (* TODO: Check if available first! *)
             Ok ({ env with env=(ValEnv.add name value env.env) })
         else
@@ -131,19 +138,23 @@ module Env = struct
     ;;
 
     let modify env name value resl = 
-        match Resolver.ScopeMap.find_opt name resl with
-        | Some depth -> 
-            assign_at env name value depth 
-        | _ -> 
-            let rec modf env = 
-                (match env.par with 
-                    | None -> 
-                        (* TODO: Was it even there!! *)
-                        { env with env=(ValEnv.add name value env.env) }
-                    | Some par -> 
-                        { env with par=(Some (modf par)) }
-                )
-            in Ok (modf env)
+        if Option.is_none env.par then
+            (* A *)
+            assign env name value
+        else
+            (match Resolver.ScopeMap.find_opt name resl with
+            | Some depth -> 
+                assign_at env name value depth 
+            | _ -> 
+                let rec modf env = 
+                    (match env.par with 
+                        | None -> 
+                            (* TODO: Was it even there!! *)
+                            { env with env=(ValEnv.add name value env.env) }
+                        | Some par -> 
+                            { env with par=(Some (modf par)) }
+                    )
+                in Ok (modf env))
     ;;
 
     let spawn env' = 
