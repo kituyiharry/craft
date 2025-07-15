@@ -1,6 +1,8 @@
 module ScopeMap = Map.Make (String);;
+module GlobSet  = Set.Make (String);;
 type scope  = (bool ScopeMap.t) [@opaque] ;;
 type lookup = (int  ScopeMap.t) [@opaque] ;;
+type globdcl= (GlobSet.t) ;;
 
 module Resolver = struct 
 
@@ -15,11 +17,12 @@ module Resolver = struct
         take the former as an Error!
     *)
     type t = { 
-            scopes: (scope list) [@opaque]
-        ;   locals: (lookup)     [@opaque]
+            scopes:  (scope list) [@opaque]
+        ;   locals:  (lookup)     [@opaque]
+        ;   globals: (globdcl)    [@opaque]
     } [@@deriving show];;
 
-    let empty = { scopes=[]; locals=ScopeMap.empty }
+    let empty = { scopes=[]; locals=ScopeMap.empty; globals=GlobSet.empty }
     ;;
 
     let begin_scope ({ scopes=res;_ } as v: t) = 
@@ -30,7 +33,9 @@ module Resolver = struct
         match res with 
         | locals :: rest -> 
             ({ v with scopes=(ScopeMap.add name false locals) :: rest }) 
-        | _ -> v
+        | _ -> 
+            (* track globals somehow *)
+            ({ v with globals=(GlobSet.add name v.globals) })
     ;;
 
     let define name ({ scopes=res; _ } as v: t) = 

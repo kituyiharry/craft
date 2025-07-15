@@ -45,6 +45,8 @@ type tokentype =
     | EOF
     (* Delim *)
     | NONPERT
+    (* Experimental call memoization *)
+    | ATMEMO
 [@@deriving show];;
 
 type token = {

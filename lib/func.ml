@@ -24,7 +24,6 @@ module Func = struct
             if arity = obj.arty then
                 let* l, r =  (callable env' obj.argl) in
                 (* update closure environment!!  *)
-                (*let _ = Format.printf "updating in %s\n" (Env.show r) in*)
                 let r = Env.update obj.func (FunImpl (arity, r, callable)) r in 
                 Ok(l, r)
             else

@@ -187,7 +187,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                             | (Bool b) ->
                                 Format.printf "%b\n" b
                             | (Number n) ->
-                                Format.printf "%f\n" n
+                                Format.printf "%.*f\n" 2 n
                             | (String s) ->
                                 Format.printf "%s\n" s
                             | Nil ->
@@ -294,6 +294,20 @@ let eval_exprs (Program {state=el;errs; resl }) =
                                             s.errs); resl }, env) more
                         )
                     in loop (s, env)
+
+                | Memoize (args, blck, tbl) -> 
+
+                    (match blck with 
+                        | FunDecl (n, a, ar, b) -> 
+                            (* we can clear the memoized table by creating a new
+                               ast node but perhaps later :-) *)
+                            let impl = Native.memo n (args) tbl resl (foldast) a b in
+                            let env  = Env.define n (FunImpl (ar, env, impl)) env in
+                            foldast (s, env) more
+                        |  _ -> 
+                            foldast (s, env) more
+                    )
+
 
                 | FunDecl (name, args, arity, block) -> 
 

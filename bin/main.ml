@@ -12,16 +12,14 @@ let runfile fname =
                 ) errs)
             in toks
         )
-    (*
-     *|> List.map (fun (_x, l) -> 
-     *    let _ = List.iter (fun t -> 
-     *        let s = Craft.Token.show_token t in 
-     *        let _ = Format.print_newline () in
-     *        Format.print_string s
-     *    ) l in
-     *    let _ = Format.print_newline () in
-     *    (_x, l)
-     *)
+    |> List.map (fun (_x, l) -> 
+        let _ = List.iter (fun t -> 
+            let s = Craft.Token.show_token t in 
+            let _ = Format.print_newline () in
+            Format.print_string s
+        ) l in
+        let _ = Format.print_newline () in
+        (_x, l))
     |> Craft.Exec.normalize
     |> Craft.Ast.parse
     |> (function 

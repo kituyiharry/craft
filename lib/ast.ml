@@ -28,6 +28,7 @@ type stage =
 
 
 module ValEnv = Map.Make (String);;
+module MemoTbl= Hashtbl.Make (String) [@opaque] [@@deriving show];; 
 
 (* order of type declarations deceptively matters in Ocaml!! *)
 
@@ -140,6 +141,7 @@ and decl =
     | Branch  of branch
     | Loop    of loop
     | FunDecl of (string * lit list * int * decl)
+    | Memoize of (expr list * decl * (lit MemoTbl.t [@opaque]))
     | Return  of expr
 
 and loopinit = 
@@ -159,7 +161,7 @@ and source =
 type interp = (craftenv -> expr -> (lit * craftenv, crafterr) result)
 
 (* scope resolution helpers *)
-let rec absolve name ({ Resolver.scopes=r; locals } as res) = 
+let rec absolve name ({ Resolver.scopes=r; locals; _ } as res) = 
 
     let _len = List.length r in 
     (* since we push to the front *)
@@ -182,7 +184,11 @@ and expresolve exp ({ Resolver.scopes=r; _ } as res) =
                         | locals :: _rem -> 
                             (match ScopeMap.find_opt name locals  with 
                                 | Some false ->
-                                    Error ("Initializer reuse of " ^ name ^ " use new name possibly?" ^ show_expr exp)
+                                    (* does it already exist before *)
+                                    if GlobSet.mem name res.globals then
+                                        Ok res
+                                    else
+                                        Error ("Initializer reuse of '" ^ name ^ "'. use a  new name possibly?")
                                 |  _ -> absolve name res
                             )
                         | [] -> 
@@ -221,13 +227,20 @@ and expresolve exp ({ Resolver.scopes=r; _ } as res) =
 and dclresolve dcl res = 
     (match dcl with
         | VarDecl (_name, _exp) -> 
-            let res' = Resolver.declare _name res in
-            (match _exp with
-                | Literal Nil -> 
+            (match _exp with 
+                | Literal (_) -> 
+                    let res' = Resolver.declare _name res in
                     Ok (Resolver.define  _name (res'))
                 | _ -> 
-                    let* res' = expresolve _exp res' in
-                    Ok (Resolver.define _name res')
+                    let res' = Resolver.declare _name res in
+                    (match _exp with
+                        | Literal Nil -> 
+                            Ok (Resolver.define  _name (res'))
+                        | _ -> 
+                            let* res' = expresolve _exp res' in
+                            Ok (Resolver.define _name res')
+                    )
+
             )
         | Stmt  (_stmt) -> 
             (match _stmt with 
@@ -240,6 +253,8 @@ and dclresolve dcl res =
                 | Ret  (lit)    -> 
                     (expresolve (Literal lit) res)
             )
+        | Memoize (_args, _blck, _memtbl) -> 
+            dclresolve _blck res
         | Block (blcks) -> 
             let res'  = Resolver.begin_scope res in 
             let* res' = List.fold_left (fun acc dcl ->
@@ -327,6 +342,8 @@ let rec _program  tseq =
     | Some (((FOR), l, c), tseq') -> 
         (* for (var i = 0; i < max; i = i + 1) { /* stuff */ } *)
         _forstmt  (l, c) tseq'
+    | Some ((ATMEMO, l, c), mseq') ->
+        _memofunc (l, c) mseq'
     | Some ((FUN, l, c), fncseq') ->
         (* fun name (...) { /* do stuff */ } *)
         _funcblock  (l, c) fncseq'
@@ -343,6 +360,40 @@ let rec _program  tseq =
 and _retstmt  rseq = 
     let* (exp, rem) = _expression  rseq in
     Ok ((Return exp), rem)
+
+and _memofunc (l, c) memoseq =
+
+    let rec checkargs args mseq = 
+        (match Seq.uncons mseq with
+            | Some ((RIGHT_PAREN, _l, _c), r) ->
+                Ok (args, r)
+            | _ -> 
+                let* (ex', rem) = _expression mseq in
+                (match Seq.uncons rem with
+                    | Some ((COMMA, _l, _c), r) ->
+                        checkargs (ex' :: args) r
+                    | Some ((RIGHT_PAREN, _l, _c), r) ->
+                        Ok (ex' :: args, r)
+                    | _ -> 
+                        Error (Unhandled (Parse, (Unexpected ({line=l;colm=c}, COMMA))), memoseq)
+                ) 
+        )
+    in
+
+    let* (args, r) = (match Seq.uncons memoseq with 
+        | Some ((LEFT_PAREN, _l, _c), r) ->
+            checkargs [] r
+        | _ ->
+            (* memoized without variables will only capture the function name! *)
+            Ok ([], memoseq)
+    ) in
+
+    match Seq.uncons r with 
+    | Some ((FUN, _, _), _) -> 
+        let* func, rem = _program r in
+        Ok ((Memoize (args, func, MemoTbl.create 16)), rem)
+    | _ -> 
+        _program r
 
 and _funcblock  (l, c) fncseq = 
 

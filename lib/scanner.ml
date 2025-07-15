@@ -65,7 +65,9 @@ let isDigit c =
 let isAlpha c =
     (c >= 'a' && c <= 'z') ||
     (c >= 'A' && c <= 'Z') ||
-    (c == '_');
+    (c == '_')
+    (* for @memo *)
+    || c == '@';
 ;;
 
 let isAlphaNumeric c =
@@ -92,6 +94,7 @@ let ht =
         ("true"  , TRUE  );
         ("var"   , VAR   );
         ("while" , WHILE );
+        ("@memo" , ATMEMO);
         (*_ -> IDENTIFIER k *)
     ] |> List.iter (fun (k, v) -> Kt.add h k v) in 
     h
