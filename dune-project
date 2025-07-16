@@ -19,7 +19,7 @@
  (name craft)
  (synopsis "A short synopsis")
  (description "A longer description")
- (depends ocaml ppx_deriving unix)
+ (depends ocaml dune ppx_deriving unix)
  (tags
   ("add topics" "to describe" your project)))
 

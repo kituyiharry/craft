@@ -2,4 +2,11 @@
  (name craft)
  (preprocess (pps ppx_deriving.show))
  (libraries unix)
- (modules io exec token scanner ast eval env func native resolver))
+ (modules io exec token scanner ast eval env func native resolver)
+ )
+
+(executable
+ (name vm)
+ (modules vm)
+ (modes exe object)
+)
