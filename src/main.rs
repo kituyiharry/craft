@@ -1,8 +1,9 @@
-use crate::{chunk::Chunk, common::OpCode, debug::disas};
-
 pub mod common;
 pub mod chunk;
 pub mod debug;
+pub mod value;
+
+use crate::{chunk::{CraftChunk}, common::{OpCode, OpType}, debug::disas};
 
 ocaml::import! {
     fn hello_world() -> String;
@@ -11,8 +12,10 @@ ocaml::import! {
 fn main() {
     // let gc = ocaml::runtime::init();
 
-    let ch: Chunk = vec![ OpCode::OpReturn ];
-    disas("test", 1, ch.iter());
+    let mut ch: CraftChunk = CraftChunk::new(); 
+    ch.add_const(1.2, 1);
+    ch.insert(OpType::Simple(OpCode::OpReturn), 0);
+    disas("test chunk", &ch);
 
     // unsafe {
     //     println!("hello_world =>: {}", hello_world(&gc).unwrap());
