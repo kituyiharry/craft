@@ -2,14 +2,17 @@
 
 - ongoing implementation of <https://craftinginterpreters.com/>.
 
-### Extras:
-
-    1. Functional interpretation
-    2. Scanning uses ocamls effects system
-    3. Lazy (uses Seq)
+### Features:
+    - Implemented in OCaml (Interpreter) and Rust (VM)
+    - No OOP
+    - Closures use resolver (but still buggy in some edge cases)
 
 to run execute: 
 
 ```bash
-dune exec craft ./res/sample.craft 
+To run the interpreter on a file
+> dune exec craft ./res/sample.craft 
+
+To run the vm
+> cargo run 
 ```
