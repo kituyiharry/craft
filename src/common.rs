@@ -5,6 +5,12 @@ pub enum OpCode {
     OpNop,
     OpReturn,
     OpConstant(usize),
+    // Arithmetic
+    OpNegate,
+    OpSub,
+    OpAdd, 
+    OpMult,
+    OpDiv,
 }
 
 #[derive(Debug)]

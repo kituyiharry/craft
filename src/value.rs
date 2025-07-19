@@ -1,6 +1,5 @@
-use ocaml::Value;
-
 pub type CraftValue = f64;
+
 pub struct ConstPool { 
     vals: Vec<CraftValue>
 }
