@@ -1,6 +1,7 @@
-pub fn main() {
-    // See:
-    // https://doc.rust-lang.org/cargo/reference/build-scripts.html#build-scripts
-    println!("cargo:rerun-if-changed=lib");
-    ocaml_build::Dune::new("lib").build()
+pub fn main() -> std::io::Result<()> {
+    // for properly linking on MacOS! 
+    if cfg!(any(target_os = "macos", target_os = "ios")) {
+        println!("cargo:rustc-link-arg=-Wl,-undefined,dynamic_lookup");
+    }
+    ocaml_build::Sigs::new("lib/craftvm.ml").generate()
 }

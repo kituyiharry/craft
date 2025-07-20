@@ -1,5 +1,5 @@
-use crate::common::{OpCode, OpType};
-use crate::value::{ConstPool, CraftValue};
+use super::common::{OpCode, OpType};
+use super::value::{ConstPool, CraftValue};
 
 // offset, line number and opcode
 pub type Offset<'a> = (usize, usize, &'a OpCode);

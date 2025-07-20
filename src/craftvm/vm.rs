@@ -1,6 +1,5 @@
-use std::{array, cell::Cell, ops::{Add, Mul, Div, Neg, Sub}, rc::Rc};
-
-use crate::{chunk::{CraftChunk, CraftChunkIter, Offset}, common::OpCode, value::CraftValue};
+use std::{array, cell::Cell, ops::{Add, Mul, Div, Sub}, rc::Rc};
+use super::{chunk::{CraftChunk, CraftChunkIter, Offset}, common::OpCode, value::CraftValue};
 
 #[derive(Default)]
 pub enum InterpretResult {
@@ -13,12 +12,12 @@ pub enum InterpretResult {
 
 
 pub struct CraftVm<'a, const STACKSIZE: usize> {
-    insptr: Option<Offset<'a>>,           // instruction pointer
+    insptr: Option<Offset<'a>>,   // instruction pointer
     chunks: CraftChunkIter<'a>,
     source: &'a CraftChunk,
 
     vstack: [Rc<Cell<CraftValue>>; STACKSIZE],
-    stkptr: Rc<Cell<CraftValue>>,       // stack pointer
+    stkptr: Rc<Cell<CraftValue>>, // stack pointer
     stkidx: usize,
 }
 
@@ -52,7 +51,9 @@ impl<'a, const STACK: usize> CraftVm<'a, STACK> {
 
     #[inline]
     fn pop(&mut self) -> CraftValue {
-        self.stkidx -= 1;
+        if self.stkidx > 0 {
+            self.stkidx -= 1;
+        }
         self.stkptr = self.vstack[self.stkidx].clone();
         self.stkptr.get()
     }
@@ -70,7 +71,10 @@ impl<'a, const STACK: usize> CraftVm<'a, STACK> {
         // start vm thread
         loop {
             if let Some((_idx, _line, op)) = self.insptr {
-                // disas_instr(self.source, _idx, _line, op);
+
+                #[cfg(feature = "vmtrace")]
+                super::debug::disas_instr(self.source, _idx, _line, op);
+
                 match op {
                     OpCode::OpReturn =>
                     {
@@ -83,32 +87,16 @@ impl<'a, const STACK: usize> CraftVm<'a, STACK> {
                         let pop = self.pop();
                         self.push(-pop);
                     },
-                    OpCode::OpSub =>
-                    {
-                        self.binop(f64::sub);
-                    },
-                    OpCode::OpAdd =>
-                    {
-                        self.binop(f64::add);
-                    },
-                    OpCode::OpMult =>
-                    {
-                        self.binop(f64::mul);
-                    },
-                    OpCode::OpDiv =>
-                    {
-                        self.binop(f64::div);
-                    },
+                    OpCode::OpSub  => self.binop(f64::sub),
+                    OpCode::OpAdd  => self.binop(f64::add),
+                    OpCode::OpMult => self.binop(f64::mul),
+                    OpCode::OpDiv  => self.binop(f64::div),
                     OpCode::OpConstant(idx) => 
                     {
                         let val = self.source.fetch_const(*idx);
-                        println!("pushed value: {val}");
                         self.push(val);
                     }
-                    OpCode::OpNop => 
-                    {
-                        println!("Nop");
-                    }
+                    OpCode::OpNop => println!("Nop")
                 }
             } else { 
                 break InterpretResult::default();

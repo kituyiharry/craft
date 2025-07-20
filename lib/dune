@@ -1,9 +1,24 @@
+(rule
+ (targets libcraftvm.a dllcraftvm.so)
+ (deps (glob_files *.rs))
+ (action
+  (progn
+   (run sh -c "cd %{project_root}/../../ && cargo build --release")
+   (run sh -c
+     "
+     cp %{project_root}/../../target/release/libcraft.so ./dllcraftvm.so 2> /dev/null || \
+     cp %{project_root}/../../target/release/libcraft.dylib ./dllcraftvm.so
+     "
+   )
+   (run cp %{project_root}/../../target/release/libcraft.a libcraftvm.a))))
+
 (library
  (name craft)
  (preprocess (pps ppx_deriving.show))
  (libraries unix)
- (modules io exec token scanner ast eval env func native resolver)
- )
+ (foreign_archives craftvm)
+ (modules io exec token scanner ast eval env func native resolver craftvm)
+ (c_library_flags (-lc -lm)))
 
 (executable
  (name vm)

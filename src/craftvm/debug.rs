@@ -1,6 +1,6 @@
 use std::{cell::Cell, rc::Rc};
 
-use crate::{chunk::{CraftChunk, CraftChunkIter}, common::OpCode, value::CraftValue};
+use super::{chunk::{CraftChunk, CraftChunkIter}, common::OpCode, value::CraftValue};
 
 pub fn disas<'a>(title: &'a str, ch: &'a CraftChunk, chnk: CraftChunkIter<'a>) {
     println!("== {title:?} ==");
