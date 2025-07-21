@@ -17,7 +17,7 @@
  (preprocess (pps ppx_deriving.show))
  (libraries unix)
  (foreign_archives craftvm)
- (modules io exec token scanner ast eval env func native resolver craftvm)
+ (modules io exec token scanner ast eval env func native resolver craftvm repl) 
  (c_library_flags (-lc -lm)))
 
 (executable

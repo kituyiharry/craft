@@ -52,15 +52,16 @@ let runfile fname =
 ;;
 
 let main () = 
-    if Array.length Sys.argv < 2 then
-        Format.printf "usage: craft <script>\n"
+    (*let _ = Format.printf "vm: %s" (Craft.Craftvm.hello_world ()) in*)
+    if Array.length Sys.argv == 1 then
+        Craft.Repl.repl ()
     else if Array.length Sys.argv = 2 then
         let _ = Format.print_newline () in
         let _ = ignore @@ runfile Sys.argv.(1) in
         let _ = Format.print_newline () in
         Format.print_newline ()
     else
-        ()
+        Format.printf "usage: craft <script>\n"
 ;;
 
 let () = 

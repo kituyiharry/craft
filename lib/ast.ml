@@ -168,7 +168,7 @@ let rec absolve name ({ Resolver.scopes=r; locals; _ } as res) =
     let m =List.find_index (ScopeMap.mem name) r in
     match m with
     | Some idx -> 
-        let _ = Format.printf "Found %s at index: %d of %d\n" name idx _len in
+        (*let _ = Format.printf "Found %s at index: %d of %d\n" name idx _len in*)
         Ok { res with locals=(ScopeMap.add name (idx) locals) }
     | _ -> 
         (* it is likely in the globals environment!! *)
