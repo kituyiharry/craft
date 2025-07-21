@@ -3,9 +3,9 @@ use super::{chunk::{CraftChunk, CraftChunkIter, Offset}, common::OpCode, value::
 
 #[derive(Default)]
 pub enum InterpretResult {
-  InterpretOK,
   #[default]
   InterpretExit,
+  InterpretOK,
   InterpretCompileError,
   InterpretRuntimeError
 }
@@ -24,7 +24,9 @@ pub struct CraftVm<'a, const STACKSIZE: usize> {
 impl<'a, const STACK: usize> CraftVm<'a, STACK> {
     pub fn new(ch: &'a CraftChunk, mut chitr: CraftChunkIter<'a>) -> Self {
         let instr = chitr.next();
-        let vstck = array::from_fn::<_, STACK, _>( |_idx|  Rc::new(Cell::new(CraftValue::default())));
+        let vstck = array::from_fn::<_, STACK, _>( 
+            |_idx|  Rc::new(Cell::new(CraftValue::default()))
+        );
         let stcki = 0;
         let stckp = (vstck[stcki]).clone();
         Self {

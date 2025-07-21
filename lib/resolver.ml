@@ -50,7 +50,7 @@ module Resolver = struct
 
     let show (res: t) = 
         let sb = Buffer.create 200 in 
-        let _  = Buffer.add_string sb "Scopes: -> [  " in
+        (*let _  = Buffer.add_string sb "Scopes: -> [  " in*)
         let leadtab = " " in
         let _ = ScopeMap.iter (fun k v -> 
             let _ = Buffer.add_string sb (leadtab ^ (k)) in 
