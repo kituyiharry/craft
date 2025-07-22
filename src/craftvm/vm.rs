@@ -69,7 +69,10 @@ impl<'a, const STACK: usize> CraftVm<'a, STACK> {
     }
 
     pub fn run(&mut self) -> InterpretResult {
-        println!("== vm exec ==");
+
+        #[cfg(feature = "vmtrace")]
+        println!("== vm trace ==");
+
         // start vm thread
         loop {
             if let Some((_idx, _line, op)) = self.insptr {

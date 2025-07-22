@@ -33,7 +33,7 @@
   let repl () = 
       let buf = Buffer.create 1024 in
       let _   = Printf.printf "=== CraftVM v0.1.0 (Toy language) ===\n 
-      \rUse CTRL-C to close the REPL\n" in
+      \rUse CTRL-C or 'quit' or 'exit' to close the REPL\n" in
       let rec bufstream tseq () = 
           let _ = Printf.printf ">>> %!" in
           let _ =
@@ -48,31 +48,37 @@
                     (match errs with 
                         | [] -> 
                             let ptext = Ast.show_source p in 
-                            Printf.printf "%s\n %!" ptext
+                            let _ = Printf.printf "%s\n%!" ptext in 
+                            bufstream tseq ()
                         | e  -> 
                             let _ = Printf.printf "Parse Errors: " in 
-                            print_parse_exprs e
+                            let _ = print_parse_exprs e in
+                            bufstream tseq ()
                     )
                 | Error e -> 
-                    Printf.printf "ParseError: %s\n %!" (Ast.show_crafterr e)
+                    Printf.printf "ParseError: %s\n%!" (Ast.show_crafterr e)
               )
           else 
-          Buffer.contents buf 
-          |> Seq.return 
-          |> Exec.run
-          |> (function {Scanner.errs;Scanner.toks} -> 
-              match errs with 
-              | [] -> 
-                  print_lex_tokens toks;
-                  let tseq' = Exec.normalize toks |> Seq.append tseq in 
-                  Format.print_newline ();
-                  Buffer.clear buf;
-                  bufstream tseq' ()
-              | errs -> 
-                  print_lex_errs errs;
-                  let _ = Buffer.clear buf in
-                  bufstream tseq ()
-          )
+          let bufcont = Buffer.contents buf in
+          if String.equal bufcont "quit" || String.equal bufcont "exit" then 
+                (Printf.printf "Goodbye! :-) %!") 
+          else
+            Buffer.contents buf 
+            |> Seq.return 
+            |> Exec.run
+            |> (function {Scanner.errs;Scanner.toks} -> 
+                match errs with 
+                | [] -> 
+                    print_lex_tokens toks;
+                    let tseq' = Exec.normalize toks |> Seq.append tseq in 
+                    (*Printf.print_newline ();*)
+                    Buffer.clear buf;
+                    bufstream tseq' ()
+                | errs -> 
+                    print_lex_errs errs;
+                    let _ = Buffer.clear buf in
+                    bufstream tseq ()
+            )
       in bufstream Seq.empty ()
   ;;
 
