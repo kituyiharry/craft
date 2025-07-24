@@ -1,38 +1,36 @@
-use std::{array, cell::Cell, ops::{Add, Mul, Div, Sub}, rc::Rc};
-use super::{chunk::{CraftChunk, CraftChunkIter, Offset}, common::OpCode, value::CraftValue};
+use std::{array, cell::RefCell, ops::{Add, Div, Mul, Sub}, rc::Rc};
+use crate::craftvm::compiler::compile;
+
+use super::{chunk::{CraftChunk}, common::OpCode, value::CraftValue};
 
 #[derive(Default)]
+#[derive(ocaml::ToValue, ocaml::FromValue)]
 pub enum InterpretResult {
   #[default]
   InterpretExit,
   InterpretOK,
+  InterpretBreak,
   InterpretCompileError,
   InterpretRuntimeError
 }
 
-
-pub struct CraftVm<'a, const STACKSIZE: usize> {
-    insptr: Option<Offset<'a>>,   // instruction pointer
-    chunks: CraftChunkIter<'a>,
-    source: &'a CraftChunk,
-
-    vstack: [Rc<Cell<CraftValue>>; STACKSIZE],
-    stkptr: Rc<Cell<CraftValue>>, // stack pointer
+pub struct CraftVm<const STACKSIZE: usize> {
+    source: Rc<RefCell<CraftChunk>>,
+    vstack: [CraftValue; STACKSIZE],
+    stkptr: CraftValue, // stack pointer
     stkidx: usize,
 }
 
-impl<'a, const STACK: usize> CraftVm<'a, STACK> {
-    pub fn new(ch: &'a CraftChunk, mut chitr: CraftChunkIter<'a>) -> Self {
-        let instr = chitr.next();
+impl<const STACK: usize> CraftVm<STACK> {
+
+    pub fn new(ch: CraftChunk) -> Self {
         let vstck = array::from_fn::<_, STACK, _>( 
-            |_idx|  Rc::new(Cell::new(CraftValue::default()))
+            |_idx| (CraftValue::default())
         );
         let stcki = 0;
-        let stckp = (vstck[stcki]).clone();
+        let stckp = vstck[stcki];
         Self {
-            chunks: chitr,
-            insptr: instr,
-            source: ch,
+            source: Rc::new(RefCell::new(ch)),
             vstack: vstck, 
             stkptr: stckp,
             stkidx: stcki,
@@ -41,14 +39,14 @@ impl<'a, const STACK: usize> CraftVm<'a, STACK> {
 
     pub fn reset_stack(&mut self) {
         self.stkidx = 0;
-        self.stkptr = (self.vstack[0]).clone();
+        self.stkptr = self.vstack[0];
     }
 
     #[inline]
     fn push(&mut self, val: CraftValue) {
-        self.stkptr.set(val);
+        self.vstack[self.stkidx] = val;
         self.stkidx += 1;
-        self.stkptr = self.vstack[self.stkidx].clone();
+        self.stkptr = self.vstack[self.stkidx];
     }
 
     #[inline]
@@ -56,8 +54,8 @@ impl<'a, const STACK: usize> CraftVm<'a, STACK> {
         if self.stkidx > 0 {
             self.stkidx -= 1;
         }
-        self.stkptr = self.vstack[self.stkidx].clone();
-        self.stkptr.get()
+        self.stkptr = self.vstack[self.stkidx];
+        self.stkptr
     }
 
     #[inline]
@@ -68,17 +66,27 @@ impl<'a, const STACK: usize> CraftVm<'a, STACK> {
         self.push(c);
     }
 
+    pub fn warm(&mut self, chunk: CraftChunk) {
+        self.reset_stack();
+        self.source.replace(chunk);
+    }
+
     pub fn run(&mut self) -> InterpretResult {
 
         #[cfg(feature = "vmtrace")]
         println!("== vm trace ==");
 
+        // To avoid being told we are "modifying something immutable"
+        let srclne = self.source.clone(); 
+        let bsrc   = srclne.borrow_mut();
+        let mut instrptr = bsrc.into_iter();
+
         // start vm thread
         loop {
-            if let Some((_idx, _line, op)) = self.insptr {
+            if let Some((_idx, _line, op)) = instrptr.next() {
 
                 #[cfg(feature = "vmtrace")]
-                super::debug::disas_instr(self.source, _idx, _line, op);
+                super::debug::disas_instr(&bsrc, _idx, _line, op);
 
                 match op {
                     OpCode::OpReturn =>
@@ -98,16 +106,24 @@ impl<'a, const STACK: usize> CraftVm<'a, STACK> {
                     OpCode::OpDiv  => self.binop(f64::div),
                     OpCode::OpConstant(idx) => 
                     {
-                        let val = self.source.fetch_const(*idx);
+                        let val = bsrc.fetch_const(*idx);
                         self.push(val);
                     }
                     OpCode::OpNop => println!("Nop")
                 }
             } else { 
-                break InterpretResult::default();
+                break InterpretResult::InterpretBreak;
             };
-            self.insptr = self.chunks.next();
         }
     }
 }
 
+pub fn interpret<const S: usize>(vm: &mut CraftVm<S>) -> InterpretResult {
+    let chunk: CraftChunk = CraftChunk::new(); 
+    if !compile(&chunk) {
+       InterpretResult::InterpretCompileError
+    } else {
+        vm.warm(chunk); 
+        vm.run()
+    }
+}

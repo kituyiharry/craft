@@ -15,9 +15,9 @@ fn main() {
     ch.insert(OpType::Simple(OpCode::OpReturn), 2);
 
     //disas("test chunk", &ch, ch.into_iter());
-    let chiter = ch.into_iter();
+    //let chiter = ch.iter();
 
-    let mut cvm = CraftVm::<STACKMAX>::new(&ch, chiter);
+    let mut cvm = CraftVm::<STACKMAX>::new(ch);
     cvm.run();
 
 }

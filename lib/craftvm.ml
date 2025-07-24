@@ -4,4 +4,4 @@ open! Bigarray
 
 (* file: lib.rs *)
 
-external hello_world: unit -> string = "hello_world"
+external compile: (Token.tokentype * int * int) Seq.t -> Compiler.compileresult = "compile"

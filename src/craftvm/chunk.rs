@@ -42,10 +42,9 @@ impl Default for CraftChunk {
     }
 }
 
-
-pub struct CraftChunkIter<'chunk> {
-    offset: usize,
-    stream: (&'chunk Vec<OpType>, &'chunk Vec<usize>),
+pub struct CraftChunkIter<'a> {
+    pub source: &'a CraftChunk,
+    offset:     usize,
 }
 
 impl<'a> IntoIterator for &'a CraftChunk {
@@ -53,7 +52,7 @@ impl<'a> IntoIterator for &'a CraftChunk {
     type IntoIter = CraftChunkIter<'a>;
     fn into_iter(self) -> Self::IntoIter {
         CraftChunkIter {
-            stream: (&self.instr, &self.lines),
+            source: self,
             offset: 0,
         }
     }
@@ -63,14 +62,14 @@ impl<'a> Iterator for CraftChunkIter<'a> {
     type Item = Offset<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.offset >= self.stream.0.len() {
+        if self.offset >= self.source.instr.len() {
             None
         } else {
             let i = self.offset;
-            match self.stream.0[self.offset] {
+            match self.source.instr[self.offset] {
                 OpType::Simple(ref op) => {
                     self.offset += 1;
-                    Some((i, self.stream.1[i], op))
+                    Some((i, self.source.lines[i], op))
                 }
             }
         }

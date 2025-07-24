@@ -3,7 +3,7 @@
  (deps (glob_files *.rs))
  (action
   (progn
-   (run sh -c "cd %{project_root}/../../ && cargo build --release")
+   (run sh -c "cd %{project_root}/../../ && cargo build --features=vmtrace --release")
    (run sh -c
      "
      cp %{project_root}/../../target/release/libcraft.so ./dllcraftvm.so 2> /dev/null || \
@@ -17,7 +17,7 @@
  (preprocess (pps ppx_deriving.show))
  (libraries unix)
  (foreign_archives craftvm)
- (modules io exec token scanner ast eval env func native resolver craftvm repl) 
+ (modules io exec token scanner ast eval env func native resolver craftvm compiler repl) 
  (c_library_flags (-lc -lm)))
 
 (executable

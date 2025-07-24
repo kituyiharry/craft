@@ -30,11 +30,25 @@ let print_parse_exprs exprs =
     ) exprs
 ;;
 
+let print_token_output tseq = 
+    let curl = ref 0 in
+    let _  = Printf.printf "" in
+    let _  = Format.printf "0 | " in
+    let _  = Seq.iter (fun (t, l, _c) ->   
+        if !curl = l then
+            Format.printf " %s " (Token.show_tokentype t)
+        else
+            curl := l;
+            Format.printf "\n %d | %s " (l) (Token.show_tokentype t)
+    ) tseq in 
+    Format.printf "\n"
+;;
+
 let repl () = 
     let buf = Buffer.create 1024 in
     let _   = Printf.printf "=== CraftVM v0.1.0 (Toy language) ===\n 
       \rUse CTRL-C or 'quit' or 'exit' to close the REPL\n" in
-    let rec bufstream tseq () = 
+    let rec bufstream tseq lineno () = 
         let _ = Printf.printf ">>> %!" in
         let _ =
             Seq.of_dispenser (fun () -> In_channel.input_char In_channel.stdin)
@@ -49,11 +63,11 @@ let repl () =
                         | [] -> 
                             let ptext = Ast.show_source p in 
                             let _ = Printf.printf "%s\n%!" ptext in 
-                            bufstream tseq ()
+                            bufstream tseq (lineno) ()
                         | e  -> 
                             let _ = Printf.printf "Parse Errors: " in 
                             let _ = print_parse_exprs e in
-                            bufstream tseq ()
+                            bufstream tseq (lineno) ()
                     )
                 | Error e -> 
                     Printf.printf "ParseError: %s\n%!" (Ast.show_crafterr e)
@@ -62,6 +76,13 @@ let repl () =
             let bufcont = Buffer.contents buf in
             if String.equal bufcont "quit" || String.equal bufcont "exit" then 
                 (Printf.printf "Goodbye! :-) %!") 
+            else if String.equal bufcont "!showtokens"  then
+                ( 
+                    (*print_token_output tseq;*)
+                    let _ = Craftvm.compile tseq in
+                    Buffer.clear buf;
+                    bufstream tseq (lineno) () 
+                )
             else
                 Buffer.contents buf 
                 |> Seq.return 
@@ -69,16 +90,18 @@ let repl () =
                 |> (function {Scanner.errs;Scanner.toks} -> 
                     match errs with 
                     | [] -> 
-                        print_lex_tokens toks;
-                        let tseq' = Exec.normalize toks |> Seq.append tseq in 
+                        (*print_lex_tokens toks;*)
+                        let tseq' = Exec.normalize toks
+                            |> Seq.map (fun (t, _l, c) -> (t, lineno, c)) 
+                            |> Seq.append tseq in 
                         (*Printf.print_newline ();*)
                         Buffer.clear buf;
-                        bufstream tseq' ()
+                        bufstream tseq' (lineno + 1) ()
                     | errs -> 
                         print_lex_errs errs;
                         let _ = Buffer.clear buf in
-                        bufstream tseq ()
+                        bufstream tseq  (lineno) ()
                 )
-    in bufstream Seq.empty ()
+    in bufstream Seq.empty 0 ()
 ;;
 

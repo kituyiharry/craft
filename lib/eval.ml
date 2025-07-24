@@ -351,6 +351,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                     in 
 
                     match init with
+                    (*for (var x = ... *)
                     | LoopDecl (name, exp) ->
                         (match eval env resl exp with
                             | Ok (o, env') ->
@@ -365,6 +366,7 @@ let eval_exprs (Program {state=el;errs; resl }) =
                             | Error err -> 
                                 foldast ({ s with errs = ((Unhandled (Eval, err)) :: s.errs) }, env) more
                         )
+                    (*for (x = ... *)
                     | LoopStmt _st ->
                         match eval env resl _st with
                         | Ok (o, env') -> 

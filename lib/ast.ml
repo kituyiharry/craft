@@ -54,7 +54,7 @@ lit =
 and context = {
       state: decl list 
     ; errs : expr list
-    ; resl : lookup
+    ; resl : lookup [@opaque]
 }
 
 and crafterr = 

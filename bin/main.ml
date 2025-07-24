@@ -52,7 +52,7 @@ let runfile fname =
 ;;
 
 let main () = 
-    (*let _ = Format.printf "vm: %s" (Craft.Craftvm.hello_world ()) in*)
+    (*let _ = Format.printf "vm: %s\n" (Craft.Craftvm.hello_world (Seq.return (Craft.Token.DOT))) in*)
     if Array.length Sys.argv == 1 then
         Craft.Repl.repl ()
     else if Array.length Sys.argv = 2 then
