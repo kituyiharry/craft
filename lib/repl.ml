@@ -101,7 +101,7 @@ let repl () =
                         print_lex_errs errs;
                         let _ = Buffer.clear buf in
                         bufstream tseq  (lineno) ()
-                )
+                    )
     in bufstream Seq.empty 0 ()
 ;;
 

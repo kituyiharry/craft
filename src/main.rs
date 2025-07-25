@@ -8,11 +8,11 @@ fn main() {
 
     ch.add_const(1.2, 1);
     ch.add_const(3.4, 1);
-    ch.insert(OpType::Simple(OpCode::OpAdd),    1);
+    ch.emit_byte(OpType::Simple(OpCode::OpAdd),    1);
     ch.add_const(5.6, 1);
-    ch.insert(OpType::Simple(OpCode::OpDiv),    1);
-    ch.insert(OpType::Simple(OpCode::OpNegate), 2);
-    ch.insert(OpType::Simple(OpCode::OpReturn), 2);
+    ch.emit_byte(OpType::Simple(OpCode::OpDiv),    1);
+    ch.emit_byte(OpType::Simple(OpCode::OpNegate), 2);
+    ch.emit_byte(OpType::Simple(OpCode::OpReturn), 2);
 
     //disas("test chunk", &ch, ch.into_iter());
     //let chiter = ch.iter();

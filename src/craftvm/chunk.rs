@@ -20,18 +20,23 @@ impl CraftChunk  {
         }
     }
 
-    pub fn insert(&mut self, op: OpType, lineno: usize) {
+    pub fn emit_byte(&mut self, op: OpType, lineno: usize) {
         self.instr.push(op);
         self.lines.push(lineno);
     }
 
     pub fn add_const(&mut self, val: CraftValue, lineno: usize) {
         let idx = self.cnsts.insert(val);
-        self.insert(OpType::Simple(OpCode::OpConstant(idx)), lineno);
+        self.emit_byte(OpType::Simple(OpCode::OpConstant(idx)), lineno);
     }
 
     pub fn fetch_const(&self, idx: usize) -> CraftValue {
         self.cnsts.get(idx)
+    }
+
+    pub fn end_compiler(&mut self, line: usize) {
+        self.instr.push(OpType::Simple(OpCode::OpReturn));
+        self.lines.push(line);
     }
 
 }
