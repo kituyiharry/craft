@@ -15,8 +15,8 @@ impl CraftChunk  {
     pub fn new() -> Self {
         Self { 
             instr: vec![], 
-            cnsts: ConstPool::new(), 
             lines: vec![], 
+            cnsts: ConstPool::new(), 
         }
     }
 

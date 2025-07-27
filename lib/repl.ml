@@ -47,7 +47,8 @@ let print_token_output tseq =
 let repl () = 
     let buf = Buffer.create 1024 in
     let _   = Printf.printf "=== CraftVM v0.1.0 (Toy language) ===\n 
-      \rUse CTRL-C or 'quit' or 'exit' to close the REPL\n" in
+      \rUse CTRL-C or '!quit' or 'exit' to close the REPL\n 
+      \rUse '!compile' to compile using the VM\n" in
     let rec bufstream tseq lineno () = 
         let _ = Printf.printf ">>> %!" in
         let _ =
@@ -74,9 +75,9 @@ let repl () =
             )
         else 
             let bufcont = Buffer.contents buf in
-            if String.equal bufcont "quit" || String.equal bufcont "exit" then 
+            if String.equal bufcont "!quit" || String.equal bufcont "exit" then 
                 (Printf.printf "Goodbye! :-) %!") 
-            else if String.equal bufcont "!showtokens"  then
+            else if String.equal bufcont "!compile"  then
                 ( 
                     (*print_token_output tseq;*)
                     let _ = Craftvm.compile tseq in

@@ -1,7 +1,7 @@
 use std::{array, cell::RefCell, ops::{Add, Div, Mul, Sub}, rc::Rc};
 use ocaml::Seq;
 
-use crate::craftvm::compiler::{compile, CraftParser, TokSeqItem};
+use super::compiler::{compile, CraftParser, TokSeqItem};
 use super::{chunk::{CraftChunk}, common::OpCode, value::CraftValue};
 
 #[derive(Default)]
@@ -120,7 +120,7 @@ impl<const STACK: usize> CraftVm<STACK> {
 }
 
 pub fn interpret<const S: usize>(vm: &mut CraftVm<S>, ts: Seq<TokSeqItem>) -> InterpretResult {
-    let chunk:  CraftChunk   = CraftChunk::new(); 
+    let chunk:  CraftChunk  = CraftChunk::new(); 
     let parser: CraftParser = CraftParser::new(ts);
     if !compile(&chunk, &parser) {
        InterpretResult::InterpretCompileError

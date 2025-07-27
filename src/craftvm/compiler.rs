@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use ocaml::Seq;
-
-use crate::craftvm::{chunk::CraftChunk, scanner::CrTokenType};
+use super::{chunk::CraftChunk, scanner::CrTokenType};
 
 pub type TokSeqItem = (CrTokenType, usize, usize);
 
