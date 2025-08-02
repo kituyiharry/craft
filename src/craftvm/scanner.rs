@@ -1,5 +1,5 @@
 // Extracted from craft/lib/token.ml
-#[derive(Debug, PartialEq, ocaml::ToValue, ocaml::FromValue)]
+#[derive(Debug, Clone, PartialEq, ocaml::ToValue, ocaml::FromValue)]
 pub enum CrTokenType<'a> {
     //(* Single-character tokens. *)
     CrLeftParen,

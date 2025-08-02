@@ -84,6 +84,11 @@ let repl () =
                     Buffer.clear buf;
                     bufstream tseq (lineno) () 
                 )
+            else if String.equal bufcont "!reset"  then
+                (
+                    Buffer.clear buf;
+                    bufstream Seq.empty (lineno) ()
+                )
             else
                 Buffer.contents buf 
                 |> Seq.return 

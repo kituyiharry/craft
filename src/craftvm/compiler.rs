@@ -406,47 +406,58 @@ impl<'a> CraftParser<'a> {
     // performs the binary operation.
     fn binary(&mut self) -> Result<(), String> {
         println!("[debug] in binary!");
+        println!("with prev {:?} and curr as {:?}", 
+            self.previous.borrow().token,
+            self.current.borrow().token
+        );
+        let tok = &self.previous.borrow().token.clone();
+        let line = self.previous.borrow().line;
         //let _rule = get_parse_rule(self.previous.borrow().token.order());
         unsafe {
-            let _rule = PARSERULES.get(self.previous.borrow().token.order()).unwrap().get() ;
+            let _rule = PARSERULES.get(tok.order()).unwrap().get() ;
             self.parse_precedence(
                 &((*_rule).precdc.next())
-                //&PARSERULES.read().unwrap().get(self.previous.borrow().token.order()).unwrap().precdc.next()
             )?;
+            println!("[debug] we acquired in binary!");
+            println!("back from precedence {:?}", (*_rule).precdc);
+            println!("finally with prev {:?} and curr as {:?}", 
+                self.previous.borrow().token,
+                self.current.borrow().token
+            );
         }
-        println!("[debug] we acquired in binary!");
-        println!("back from precedence");
-        //self.advance();
-        let tok = &self.previous.borrow();
         let mut ch = self.chnk.borrow_mut();
-        println!("pushing op {:?}", tok.token);
-        match tok.token {
+        println!("pushing op {tok:?}");
+        match tok {
             CrTokenType::CrPlus => {
-                ch.emit_byte(OpType::Simple(common::OpCode::OpAdd), tok.line);
+                ch.emit_byte(OpType::Simple(common::OpCode::OpAdd), line);
                 Ok(())
             }
             CrTokenType::CrMinus => {
-                ch.emit_byte(OpType::Simple(common::OpCode::OpSub), tok.line);
+                ch.emit_byte(OpType::Simple(common::OpCode::OpSub), line);
                 Ok(())
             }
             CrTokenType::CrStar => {
-                ch.emit_byte(OpType::Simple(common::OpCode::OpMult), tok.line);
+                ch.emit_byte(OpType::Simple(common::OpCode::OpMult), line);
                 Ok(())
             }
             CrTokenType::CrSlash => {
-                ch.emit_byte(OpType::Simple(common::OpCode::OpDiv), tok.line);
+                ch.emit_byte(OpType::Simple(common::OpCode::OpDiv), line);
                 Ok(())
             }
-            _ => Ok(()),
+            _ => { 
+                println!("wrong operator token {tok:?}!");
+                Ok(())
+            },
         }
     }
 
     fn unary(&mut self) -> Result<(), String> {
         println!("[debug] in unary!");
+        let prevt  = self.previous.borrow().token.clone();
+        let line   = self.previous.borrow().line;
         self.parse_precedence(&Precedence::PrecUnary)?;
-        let prev = self.previous.borrow();
         let mut ch = self.chnk.borrow_mut();
-        match prev.token {
+        match prevt {
             // we emit the bytecode to perform the negation.
             // It might seem a little weird to write the negate instruction after
             // its operand’s bytecode since the - appears on the left,
@@ -454,7 +465,7 @@ impl<'a> CraftParser<'a> {
             // We evaluate the operand first which leaves its value on the stack.
             // Then we pop that value, negate it, and push the result.
             CrTokenType::CrMinus => {
-                ch.emit_byte(OpType::Simple(common::OpCode::OpNegate), prev.line);
+                ch.emit_byte(OpType::Simple(common::OpCode::OpNegate), line);
                 Ok(())
             }
             _ => Ok(()),
@@ -470,7 +481,8 @@ impl<'a> CraftParser<'a> {
         println!("applying rule");
         match prefrule.prefix {
             Some(ref mut _preffn) => {
-                println!("found some prefix rule for that");
+                println!("found some prefix rule");
+                println!("prev: {:?} and  curr: {:?}", self.previous.borrow().token, self.current.borrow().token);
                 match _preffn.as_mut()(self) {
                     Ok(n)  => n,
                     Err(e) => println!("Error from parse rule somewhere: {e}!!"),
@@ -479,10 +491,9 @@ impl<'a> CraftParser<'a> {
                 // If we find one, it means the prefix expression we already compiled might be an operand for it.
                 // But only if the call to parsePrecedence() has a precedence that is low enough to permit that infix operator.
                 println!("looping over precedences");
+                let order =_prec.order();
                 unsafe  {
-                    while (_prec.order())
-                    <= ((*PARSERULES.get(self.current.borrow().token.order()).unwrap().get()).precdc).order()
-                    //<= (get_parse_rule(self.current.borrow().token.order()).precdc).order()
+                    while order <= ((*PARSERULES.get(self.current.borrow().token.order()).unwrap().get()).precdc).order()
                     {
                         // we consume the operator and hand off control to the infix parser we found.
                         // It consumes whatever other tokens it needs (usually the right operand) and returns back to parsePrecedence().
@@ -492,14 +503,13 @@ impl<'a> CraftParser<'a> {
                         //let nprefrule = &get_parse_rule(self.previous.borrow().token.order()).infix;
                         let binding: &mut UnsafeCell<CraftParseRule> = PARSERULES.get_mut(self.previous.borrow().token.order()).unwrap();
                         let nprefrule = binding.get_mut();
-                        println!("we found the precedence rule: {:?}", nprefrule.precdc);
+                        println!("now with prev: {:?} and  curr: {:?}", self.previous.borrow().token, self.current.borrow().token);
                         if let Some(ref mut _npreffn) = nprefrule.infix {
-                            println!("another precedence rule found");
+                            println!("applying infix");
                             match _npreffn.as_mut()(self) {
                                 Ok(n) => n,
                                 Err(e) => println!("Error from parse rule somewhere: {e}!!"),
                             };
-                            break;
                         } else {
                             println!("the prefix was empty??");
                         }
@@ -536,6 +546,7 @@ impl<'a> CraftParser<'a> {
         if let Some(tok) = self.tokseq.next() {
             match tok {
                 Ok((token, line, col)) => {
+                    println!("advance popped token {token:?}");
                     self.current.replace(TokenData { line, col, token });
                     return true;
                 }
@@ -604,7 +615,7 @@ pub fn compile(_parser: &'_ mut CraftParser) -> bool {
     while _parser.advance() {
         _parser.expression().unwrap();
     }
-    _parser.consume(CrTokenType::CrEof, "expected End of File").unwrap();
+    //_parser.consume(CrTokenType::CrEof, "expected End of File").unwrap();
     _parser.end();
     !_parser.state.borrow().had_err
 }
