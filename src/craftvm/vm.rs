@@ -74,8 +74,7 @@ impl<const STACK: usize> CraftVm<STACK> {
     }
 
     pub fn run(&mut self) -> InterpretResult {
-        #[cfg(feature = "vmtrace")]
-        println!("== vm exec ==");
+        log::debug!("== vm exec ==");
 
         // To avoid being told we are "modifying something immutable"
         let srclne = self.source.clone();
@@ -85,13 +84,14 @@ impl<const STACK: usize> CraftVm<STACK> {
         // start vm thread
         loop {
             if let Some((_idx, _line, op)) = instrptr.next() {
-                #[cfg(feature = "vmtrace")]
-                super::debug::disas_instr(&bsrc, _idx, _line, op);
+                if log::log_enabled!(log::Level::Debug) {
+                    super::debug::disas_instr(&bsrc, _idx, _line, op);
+                }
 
                 match op {
                     OpCode::OpReturn => {
                         let val = self.pop();
-                        println!("popped value: {val}");
+                        log::info!("{val}");
                         return InterpretResult::InterpretOK;
                     }
                     OpCode::OpNegate => {
@@ -106,7 +106,7 @@ impl<const STACK: usize> CraftVm<STACK> {
                         let val = bsrc.fetch_const(*idx);
                         self.push(val);
                     }
-                    OpCode::OpNop => println!("Nop"),
+                    OpCode::OpNop => log::debug!("Nop instruction"),
                 }
             } else {
                 break InterpretResult::InterpretOK;
@@ -123,8 +123,10 @@ pub fn interpret<'a, const S: usize>(
     let chunk = RefCell::new(CraftChunk::new());
     let mut parser: CraftParser = CraftParser::new(ts, chunk);
     if !compile(&mut parser) {
+        log::error!("Compilation Error");
         InterpretResult::InterpretCompileError
     } else {
+        log::info!("executing");
         vm.warm(parser.chnk.into_inner());
         vm.run()
     }

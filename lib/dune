@@ -3,7 +3,7 @@
  (deps (glob_files *.rs))
  (action
   (progn
-   (run sh -c "cd %{project_root}/../../ && cargo build --features=vmtrace --release")
+   (run sh -c "cd %{project_root}/../../ && cargo build --release")
    (run sh -c
      "
      cp %{project_root}/../../target/release/libcraft.so ./dllcraftvm.so 2> /dev/null || \

@@ -3,15 +3,18 @@
 use super::{chunk::CraftChunk, common, scanner::CrTokenType};
 use crate::craftvm::common::OpType;
 use ocaml::Seq;
-use std::{cell::{RefCell, UnsafeCell}, fmt::Debug};
 use once_cell::sync::Lazy;
+use std::{
+    cell::{RefCell, UnsafeCell},
+    fmt::Debug,
+};
 
 pub type TokSeqItem<'a> = (CrTokenType<'a>, usize, usize);
 
 #[derive(Debug, Default)]
 pub struct ParseState {
-    had_err: bool,
-    panic_md: bool,
+    pub had_err: bool,
+    pub panic_md: bool,
 }
 
 #[derive(Debug)]
@@ -36,7 +39,7 @@ pub struct CraftParser<'a> {
     tokseq: Seq<(CrTokenType<'a>, usize, usize)>,
     current: RefCell<TokenData<'a>>,
     previous: RefCell<TokenData<'a>>,
-    state: RefCell<ParseState>,
+    pub state: RefCell<ParseState>,
     pub chnk: RefCell<CraftChunk>,
 }
 
@@ -95,7 +98,7 @@ type ParseFn = Box<dyn (FnMut(&mut CraftParser<'_>) -> ParseRs) + Send + Sync>;
 
 pub struct CraftParseRule {
     pub prefix: Option<ParseFn>,
-    pub infix:  Option<ParseFn>,
+    pub infix: Option<ParseFn>,
     pub precdc: Precedence,
 }
 
@@ -107,261 +110,261 @@ pub struct CraftParseRule {
 // You can’t start an expression with, say, else, and } would make for a pretty confusing infix operator
 //
 #[allow(clippy::redundant_closure)]
-static mut PARSERULES: Lazy<[UnsafeCell<CraftParseRule>; 42]> = Lazy::new(|| 
+static mut PARSERULES: Lazy<[UnsafeCell<CraftParseRule>; 42]> = Lazy::new(|| {
     [
-    // CrTokenType::CrLeftParen => 0,
-    UnsafeCell::new(CraftParseRule {
-        prefix: Some(Box::new(|s| CraftParser::grouping(s))),
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }), 
-    // CrTokenType::CrRightParen => 1,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrLeftBrace => 2,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrRightBrace => 3,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrComma => 4,
-         UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrDot => 5,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrMinus => 6,
+        // CrTokenType::CrLeftParen => 0,
         UnsafeCell::new(CraftParseRule {
-        prefix: Some(Box::new(|s| CraftParser::unary(s))),
-        infix:  Some(Box::new(|s| CraftParser::binary(s))),
-        precdc: Precedence::PrecTerm,
-    }),
-    // CrTokenType::CrPlus => 7,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix:  Some(Box::new(|s| CraftParser::binary(s))),
-        precdc: Precedence::PrecTerm,
-    }),
-    // CrTokenType::CrSemicolon => 8,
-       UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-
-    // CrTokenType::CrSlash => 9,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix:  Some(Box::new(|s| CraftParser::binary(s))),
-        precdc: Precedence::PrecFactor,
-    }),
-    // CrTokenType::CrStar => 10,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: Some(Box::new(|s| CraftParser::binary(s))),
-        precdc: Precedence::PrecFactor,
-    }),
-    // CrTokenType::CrBang => 11,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrBangEqual => 12,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrEqual => 13,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrEqualEqual => 14,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrGreater => 15,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrGreaterEqual => 16,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrLess => 17,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrLessEqual => 18,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrIdentifier(_) => 19,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrString(_) => 20,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrNumber(_) => 21,
-    UnsafeCell::new(CraftParseRule {
-        prefix: Some(Box::new(|s| CraftParser::number(s))),
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrAnd => 22,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrClass => 23,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrElse => 24,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrFalse => 25,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrFor => 26,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrFun => 27,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    // CrTokenType::CrIf => 28,
-    // CrTokenType::CrNil => 29,
-    // CrTokenType::CrOr => 30,
-    // CrTokenType::CrPrint => 31,
-    // CrTokenType::CrReturn => 32,
-    // CrTokenType::CrSuper => 33,
-    // CrTokenType::CrThis => 34,
-    // CrTokenType::CrTrue => 35,
-    // CrTokenType::CrVar => 36,
-    // CrTokenType::CrWhile => 37,
-    // CrTokenType::CrEof => 38,
-    // CrTokenType::CrPrintln => 39,
-    // CrTokenType::CrNonpert => 40,
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-    UnsafeCell::new(CraftParseRule {
-        prefix: None,
-        infix: None,
-        precdc: Precedence::PrecNone,
-    }),
-] );
+            prefix: Some(Box::new(|s| CraftParser::grouping(s))),
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrRightParen => 1,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrLeftBrace => 2,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrRightBrace => 3,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrComma => 4,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrDot => 5,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrMinus => 6,
+        UnsafeCell::new(CraftParseRule {
+            prefix: Some(Box::new(|s| CraftParser::unary(s))),
+            infix: Some(Box::new(|s| CraftParser::binary(s))),
+            precdc: Precedence::PrecTerm,
+        }),
+        // CrTokenType::CrPlus => 7,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: Some(Box::new(|s| CraftParser::binary(s))),
+            precdc: Precedence::PrecTerm,
+        }),
+        // CrTokenType::CrSemicolon => 8,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrSlash => 9,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: Some(Box::new(|s| CraftParser::binary(s))),
+            precdc: Precedence::PrecFactor,
+        }),
+        // CrTokenType::CrStar => 10,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: Some(Box::new(|s| CraftParser::binary(s))),
+            precdc: Precedence::PrecFactor,
+        }),
+        // CrTokenType::CrBang => 11,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrBangEqual => 12,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrEqual => 13,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrEqualEqual => 14,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrGreater => 15,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrGreaterEqual => 16,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrLess => 17,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrLessEqual => 18,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrIdentifier(_) => 19,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrString(_) => 20,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrNumber(_) => 21,
+        UnsafeCell::new(CraftParseRule {
+            prefix: Some(Box::new(|s| CraftParser::number(s))),
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrAnd => 22,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrClass => 23,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrElse => 24,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrFalse => 25,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrFor => 26,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrFun => 27,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        // CrTokenType::CrIf => 28,
+        // CrTokenType::CrNil => 29,
+        // CrTokenType::CrOr => 30,
+        // CrTokenType::CrPrint => 31,
+        // CrTokenType::CrReturn => 32,
+        // CrTokenType::CrSuper => 33,
+        // CrTokenType::CrThis => 34,
+        // CrTokenType::CrTrue => 35,
+        // CrTokenType::CrVar => 36,
+        // CrTokenType::CrWhile => 37,
+        // CrTokenType::CrEof => 38,
+        // CrTokenType::CrPrintln => 39,
+        // CrTokenType::CrNonpert => 40,
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+        UnsafeCell::new(CraftParseRule {
+            prefix: None,
+            infix: None,
+            precdc: Precedence::PrecNone,
+        }),
+    ]
+});
 
 impl Debug for CraftParser<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -375,29 +378,31 @@ impl Debug for CraftParser<'_> {
 
 #[allow(dead_code)]
 impl<'a> CraftParser<'a> {
-
     pub fn new(tokseq: Seq<(CrTokenType<'a>, usize, usize)>, chnk: RefCell<CraftChunk>) -> Self {
         Self {
             tokseq,
             chnk,
-            current:  RefCell::new(TokenData::default()),
+            current: RefCell::new(TokenData::default()),
             previous: RefCell::new(TokenData::default()),
-            state:    RefCell::new(ParseState::default()),
+            state: RefCell::new(ParseState::default()),
         }
     }
 
     fn number(&mut self) -> Result<(), String> {
-        println!("[debug] in number!");
+        log::debug!("accepted a number!");
         let tok = self.previous.borrow();
         match &tok.token {
             CrTokenType::CrNumber(ref value) => {
-                println!("it was a number {value}");
+                log::debug!("was number {value}");
                 let mut curch = self.chnk.borrow_mut();
                 // no need to check for max int sinze we use usize for the indexes
                 curch.add_const(*value, tok.line);
                 Ok(())
             }
-            t => Err(format!("Not a number in {t:?}")),
+            t => {
+                log::error!("expected a number!");
+                Err(format!("Not a number in {t:?}"))
+            }
         }
     }
 
@@ -405,28 +410,25 @@ impl<'a> CraftParser<'a> {
     // own trailing operand. Finally, it emits the bytecode instruction that
     // performs the binary operation.
     fn binary(&mut self) -> Result<(), String> {
-        println!("[debug] in binary!");
-        println!("with prev {:?} and curr as {:?}", 
+        log::debug!("accepted a binary operator!");
+        log::debug!(
+            "state is prev {:?} and curr as {:?}",
             self.previous.borrow().token,
             self.current.borrow().token
         );
         let tok = &self.previous.borrow().token.clone();
         let line = self.previous.borrow().line;
-        //let _rule = get_parse_rule(self.previous.borrow().token.order());
         unsafe {
-            let _rule = PARSERULES.get(tok.order()).unwrap().get() ;
-            self.parse_precedence(
-                &((*_rule).precdc.next())
-            )?;
-            println!("[debug] we acquired in binary!");
-            println!("back from precedence {:?}", (*_rule).precdc);
-            println!("finally with prev {:?} and curr as {:?}", 
+            let _rule = PARSERULES.get(tok.order()).unwrap().get();
+            self.parse_precedence(&((*_rule).precdc.next()))?;
+            log::debug!(
+                "out of precedence finally with prev {:?} and curr as {:?}",
                 self.previous.borrow().token,
                 self.current.borrow().token
             );
         }
         let mut ch = self.chnk.borrow_mut();
-        println!("pushing op {tok:?}");
+        log::debug!("pushing op {tok:?}");
         match tok {
             CrTokenType::CrPlus => {
                 ch.emit_byte(OpType::Simple(common::OpCode::OpAdd), line);
@@ -444,17 +446,17 @@ impl<'a> CraftParser<'a> {
                 ch.emit_byte(OpType::Simple(common::OpCode::OpDiv), line);
                 Ok(())
             }
-            _ => { 
-                println!("wrong operator token {tok:?}!");
+            _ => {
+                log::error!("escaping operator token {tok:?}!");
                 Ok(())
-            },
+            }
         }
     }
 
     fn unary(&mut self) -> Result<(), String> {
-        println!("[debug] in unary!");
-        let prevt  = self.previous.borrow().token.clone();
-        let line   = self.previous.borrow().line;
+        log::debug!("accepted unary expr!");
+        let prevt = self.previous.borrow().token.clone();
+        let line = self.previous.borrow().line;
         self.parse_precedence(&Precedence::PrecUnary)?;
         let mut ch = self.chnk.borrow_mut();
         match prevt {
@@ -468,32 +470,46 @@ impl<'a> CraftParser<'a> {
                 ch.emit_byte(OpType::Simple(common::OpCode::OpNegate), line);
                 Ok(())
             }
-            _ => Ok(()),
+            _ => {
+                log::error!("escaping unary operator");
+                Ok(())
+            }
         }
     }
 
     fn parse_precedence(&mut self, _prec: &Precedence) -> Result<(), String> {
-        println!("[debug] in precedence for {_prec:?}!");
+        log::debug!("in precedence for {_prec:?}!");
         self.advance();
-        //let prefrule = get_parse_rule(self.previous.borrow().token.order()); 
-        let binding = unsafe { PARSERULES.get_mut(self.previous.borrow().token.order()).unwrap() };
-        let prefrule = binding.get_mut(); 
-        println!("applying rule");
+        //let prefrule = get_parse_rule(self.previous.borrow().token.order());
+        let binding = unsafe {
+            PARSERULES
+                .get_mut(self.previous.borrow().token.order())
+                .unwrap()
+        };
+        let prefrule = binding.get_mut();
         match prefrule.prefix {
             Some(ref mut _preffn) => {
-                println!("found some prefix rule");
-                println!("prev: {:?} and  curr: {:?}", self.previous.borrow().token, self.current.borrow().token);
+                log::debug!(
+                    "applying prefix rule at prev: {:?} and  curr: {:?}",
+                    self.previous.borrow().token,
+                    self.current.borrow().token
+                );
                 match _preffn.as_mut()(self) {
-                    Ok(n)  => n,
+                    Ok(n) => n,
                     Err(e) => println!("Error from parse rule somewhere: {e}!!"),
                 };
                 // Now we look for an infix parser for the next token.
                 // If we find one, it means the prefix expression we already compiled might be an operand for it.
                 // But only if the call to parsePrecedence() has a precedence that is low enough to permit that infix operator.
-                println!("looping over precedences");
-                let order =_prec.order();
-                unsafe  {
-                    while order <= ((*PARSERULES.get(self.current.borrow().token.order()).unwrap().get()).precdc).order()
+                let order = _prec.order();
+                unsafe {
+                    while (order
+                        <= ((*PARSERULES
+                            .get(self.current.borrow().token.order())
+                            .unwrap()
+                            .get())
+                        .precdc)
+                            .order())
                     {
                         // we consume the operator and hand off control to the infix parser we found.
                         // It consumes whatever other tokens it needs (usually the right operand) and returns back to parsePrecedence().
@@ -501,67 +517,70 @@ impl<'a> CraftParser<'a> {
                         // preceding expression as its operand.
                         self.advance();
                         //let nprefrule = &get_parse_rule(self.previous.borrow().token.order()).infix;
-                        let binding: &mut UnsafeCell<CraftParseRule> = PARSERULES.get_mut(self.previous.borrow().token.order()).unwrap();
+                        let binding = PARSERULES
+                            .get_mut(self.previous.borrow().token.order())
+                            .unwrap();
                         let nprefrule = binding.get_mut();
-                        println!("now with prev: {:?} and  curr: {:?}", self.previous.borrow().token, self.current.borrow().token);
                         if let Some(ref mut _npreffn) = nprefrule.infix {
-                            println!("applying infix");
+                            log::debug!(
+                                "now with prev: {:?} and  curr: {:?}",
+                                self.previous.borrow().token,
+                                self.current.borrow().token
+                            );
                             match _npreffn.as_mut()(self) {
                                 Ok(n) => n,
-                                Err(e) => println!("Error from parse rule somewhere: {e}!!"),
+                                Err(e) => log::error!("Error from parse rule somewhere: {e}!!"),
                             };
                         } else {
-                            println!("the prefix was empty??");
+                            log::error!("the infix rule was empty");
                         }
                     }
                 }
                 Ok(())
             }
             None => {
-                //self.error_at(&self.previous.borrow(), "Expected expression");
-                //Err("Expected expression".into())
+                log::error!("the prefix rule was empty");
                 Ok(())
             }
         }
     }
 
     fn grouping(&mut self) -> Result<(), String> {
-        println!("[debug] in grouping!");
+        log::debug!("accepted grouping!");
         self.expression()?;
         self.consume(CrTokenType::CrRightParen, "Close grouping")
     }
 
     fn expression(&mut self) -> Result<(), String> {
-        println!("[debug] in expression!");
+        log::debug!("accepted raw expression!");
         self.parse_precedence(&Precedence::PrecAssignment)?;
-        println!("back to expression");
         Ok(())
     }
 
     pub fn advance(&mut self) -> bool {
-        println!("[debug] advancing!!");
+        log::debug!("advancing!!");
         self.previous.swap(&self.current);
         // unlike the book impl, we are re-using the scanner in ocaml so we don't handle special
         // tokens here!
         if let Some(tok) = self.tokseq.next() {
             match tok {
                 Ok((token, line, col)) => {
-                    println!("advance popped token {token:?}");
+                    log::debug!("advance popped token {token:?}");
                     self.current.replace(TokenData { line, col, token });
                     return true;
                 }
                 Err(e) => {
-                    println!("Token Sequence error: {e:?}!");
+                    log::error!("Token Sequence error: {e:?}!");
                     self.error_at(&self.previous.borrow(), "TokenSequence Error");
                     return false;
                 }
             }
-        }; 
+        };
         false
     }
 
     pub fn consume(&mut self, expected: CrTokenType, message: &'static str) -> Result<(), String> {
-        println!("[debug] consuming!!");
+        log::debug!("consuming a token, expecting {expected:?}!");
         if self.current.get_mut().token.eq(&expected) {
             self.advance();
             return Ok(());
@@ -571,7 +590,10 @@ impl<'a> CraftParser<'a> {
     }
 
     pub fn end(&mut self) {
-        self.chnk.get_mut().end_compiler(self.current.borrow().line + 1);
+        log::debug!("pushing return operation");
+        self.chnk
+            .get_mut()
+            .end_compiler(self.current.borrow().line + 1);
     }
 
     pub fn error_at(&self, tok: &TokenData, message: &'static str) {
@@ -580,23 +602,21 @@ impl<'a> CraftParser<'a> {
         let coln = tok.col;
         let tokn = &tok.token;
         if state.panic_md {
-            println!("already in panic mode!!");
+            log::error!("already in panic mode!!");
             return;
         }
 
-        #[cfg(feature = "vmtrace")]
-        {
+        if log::log_enabled!(log::Level::Debug) {
             let ch = self.chnk.borrow();
             super::debug::disas("== dump ==", &ch, ch.into_iter());
         }
 
         state.panic_md = true;
-        println!("Error at line ({line}, {coln}), tok: {tokn:?}, {message} ");
+        log::error!("Error at line ({line}, {coln}), tok: {tokn:?}, {message} ");
         if let CrTokenType::CrEof = tokn {
-            println!("End of File!");
+            log::info!("End of File!");
             return;
         };
-        println!();
         state.had_err = true;
     }
 
@@ -612,8 +632,10 @@ impl<'a> CraftParser<'a> {
 }
 
 pub fn compile(_parser: &'_ mut CraftParser) -> bool {
+    log::info!("compiling");
     while _parser.advance() {
         _parser.expression().unwrap();
+        log::info!("compiler advancing expression");
     }
     //_parser.consume(CrTokenType::CrEof, "expected End of File").unwrap();
     _parser.end();

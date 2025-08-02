@@ -7,7 +7,7 @@ use super::{
 };
 
 pub fn disas<'a>(title: &'a str, ch: &'a CraftChunk, chnk: CraftChunkIter<'a>) {
-    println!("== {title:?} ==");
+    log::debug!("== {title:?} ==");
     for (idx, line, ele) in chnk {
         disas_instr(ch, idx, line, ele);
     }
@@ -17,10 +17,10 @@ pub fn disas_instr<'a>(ch: &'a CraftChunk, idx: usize, line: usize, ele: &'a OpC
     match ele {
         OpCode::OpConstant(cidx) => {
             let v = ch.fetch_const(*cidx);
-            println!("{idx:04} {line:03} {ele:?}  '{v}'");
+            log::debug!("{idx:04} {line:03} {ele:?}  '{v}'");
         }
         _ => {
-            println!("{idx:04}  |  {ele:?}");
+            log::debug!("{idx:04}  |  {ele:?}");
         }
     }
 }
@@ -28,6 +28,6 @@ pub fn disas_instr<'a>(ch: &'a CraftChunk, idx: usize, line: usize, ele: &'a OpC
 pub fn disas_stack(stck: &[Rc<Cell<CraftValue>>], topidx: usize) {
     (topidx..0).for_each(|i| {
         let v = stck[i].get();
-        println!("[ {v} ]");
+        log::debug!("[ {v} ]");
     });
 }

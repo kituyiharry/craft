@@ -15,7 +15,7 @@ To run the interpreter on a file
 > dune exec craft ./res/sample.craft 
 
 To run the vm
-> cargo run --features=vmtrace --release 
+> cargo run --release 
 
 ** NB: Running in dev mode may fail because of how some global variables are
 accessed - not sure why ? **
