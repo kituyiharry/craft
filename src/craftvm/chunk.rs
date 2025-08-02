@@ -4,19 +4,18 @@ use super::value::{ConstPool, CraftValue};
 // offset, line number and opcode
 pub type Offset<'a> = (usize, usize, &'a OpCode);
 
-pub struct CraftChunk { 
+pub struct CraftChunk {
     instr: Vec<OpType>,
     cnsts: ConstPool,
     lines: Vec<usize>, // HINT: RLE encode this for better memory use
 }
 
-impl CraftChunk  {
-
+impl CraftChunk {
     pub fn new() -> Self {
-        Self { 
-            instr: vec![], 
-            lines: vec![], 
-            cnsts: ConstPool::new(), 
+        Self {
+            instr: vec![],
+            lines: vec![],
+            cnsts: ConstPool::new(),
         }
     }
 
@@ -38,7 +37,6 @@ impl CraftChunk  {
         self.instr.push(OpType::Simple(OpCode::OpReturn));
         self.lines.push(line);
     }
-
 }
 
 impl Default for CraftChunk {
@@ -49,7 +47,7 @@ impl Default for CraftChunk {
 
 pub struct CraftChunkIter<'a> {
     pub source: &'a CraftChunk,
-    offset:     usize,
+    offset: usize,
 }
 
 impl<'a> IntoIterator for &'a CraftChunk {
@@ -80,4 +78,3 @@ impl<'a> Iterator for CraftChunkIter<'a> {
         }
     }
 }
-

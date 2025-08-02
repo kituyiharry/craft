@@ -4,6 +4,7 @@
 
 ### Features:
     - Implemented in OCaml (Interpreter) and Rust (VM)
+    - Precedence not adhered to in interpreter - use parens to set precedence of operations
     - No OOP
     - Closures use resolver (but still buggy in some edge cases)
 
@@ -14,5 +15,8 @@ To run the interpreter on a file
 > dune exec craft ./res/sample.craft 
 
 To run the vm
-> cargo run 
+> cargo run --features=vmtrace --release 
+
+** NB: Running in dev mode may fail because of how some global variables are
+accessed - not sure why ? **
 ```

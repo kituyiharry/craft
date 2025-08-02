@@ -342,6 +342,7 @@ let rec _program  tseq =
     | Some (((FOR), l, c), tseq') -> 
         (* for (var i = 0; i < max; i = i + 1) { /* stuff */ } *)
         _forstmt  (l, c) tseq'
+        (* @memo(x) fun dothing(x) { /* maybe recursively call with memoized x */ } *)
     | Some ((ATMEMO, l, c), mseq') ->
         _memofunc (l, c) mseq'
     | Some ((FUN, l, c), fncseq') ->

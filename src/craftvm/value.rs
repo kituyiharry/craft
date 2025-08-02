@@ -1,14 +1,12 @@
 pub type CraftValue = f64;
 
-pub struct ConstPool { 
-    vals: Vec<CraftValue>
+pub struct ConstPool {
+    vals: Vec<CraftValue>,
 }
 
 impl ConstPool {
     pub fn new() -> Self {
-        Self { 
-            vals: vec![]
-        }
+        Self { vals: vec![] }
     }
 
     pub fn insert(&mut self, val: CraftValue) -> usize {
@@ -24,6 +22,6 @@ impl ConstPool {
 
 impl Default for ConstPool {
     fn default() -> Self {
-        ConstPool::new() 
+        ConstPool::new()
     }
 }

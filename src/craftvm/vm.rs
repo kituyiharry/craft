@@ -1,18 +1,22 @@
-use std::{array, cell::RefCell, ops::{Add, Div, Mul, Sub}, rc::Rc};
 use ocaml::Seq;
+use std::{
+    array,
+    cell::RefCell,
+    ops::{Add, Div, Mul, Sub},
+    rc::Rc,
+};
 
 use super::compiler::{compile, CraftParser, TokSeqItem};
-use super::{chunk::{CraftChunk}, common::OpCode, value::CraftValue};
+use super::{chunk::CraftChunk, common::OpCode, value::CraftValue};
 
-#[derive(Default)]
-#[derive(ocaml::ToValue, ocaml::FromValue)]
+#[derive(Default, Debug, ocaml::ToValue, ocaml::FromValue)]
 pub enum InterpretResult {
-  #[default]
-  InterpretExit,
-  InterpretOK,
-  InterpretBreak,
-  InterpretCompileError,
-  InterpretRuntimeError
+    #[default]
+    InterpretExit,
+    InterpretOK,
+    InterpretBreak,
+    InterpretCompileError,
+    InterpretRuntimeError,
 }
 
 pub struct CraftVm<const STACKSIZE: usize> {
@@ -23,16 +27,13 @@ pub struct CraftVm<const STACKSIZE: usize> {
 }
 
 impl<const STACK: usize> CraftVm<STACK> {
-
     pub fn new(ch: CraftChunk) -> Self {
-        let vstck = array::from_fn::<_, STACK, _>( 
-            |_idx| (CraftValue::default())
-        );
+        let vstck = array::from_fn::<_, STACK, _>(|_idx| (CraftValue::default()));
         let stcki = 0;
         let stckp = vstck[stcki];
         Self {
             source: Rc::new(RefCell::new(ch)),
-            vstack: vstck, 
+            vstack: vstck,
             stkptr: stckp,
             stkidx: stcki,
         }
@@ -61,7 +62,7 @@ impl<const STACK: usize> CraftVm<STACK> {
 
     #[inline]
     fn binop(&mut self, f: fn(CraftValue, CraftValue) -> CraftValue) {
-        let b = self.pop(); 
+        let b = self.pop();
         let a = self.pop();
         let c = f(a, b);
         self.push(c);
@@ -73,59 +74,58 @@ impl<const STACK: usize> CraftVm<STACK> {
     }
 
     pub fn run(&mut self) -> InterpretResult {
-
         #[cfg(feature = "vmtrace")]
-        println!("== vm trace ==");
+        println!("== vm exec ==");
 
         // To avoid being told we are "modifying something immutable"
-        let srclne = self.source.clone(); 
-        let bsrc   = srclne.borrow_mut();
+        let srclne = self.source.clone();
+        let bsrc = srclne.borrow_mut();
         let mut instrptr = bsrc.into_iter();
 
         // start vm thread
         loop {
             if let Some((_idx, _line, op)) = instrptr.next() {
-
                 #[cfg(feature = "vmtrace")]
                 super::debug::disas_instr(&bsrc, _idx, _line, op);
 
                 match op {
-                    OpCode::OpReturn =>
-                    {
+                    OpCode::OpReturn => {
                         let val = self.pop();
                         println!("popped value: {val}");
-                        return InterpretResult::InterpretOK
-                    },
-                    OpCode::OpNegate =>
-                    {
+                        return InterpretResult::InterpretOK;
+                    }
+                    OpCode::OpNegate => {
                         let pop = self.pop();
                         self.push(-pop);
-                    },
-                    OpCode::OpSub  => self.binop(f64::sub),
-                    OpCode::OpAdd  => self.binop(f64::add),
+                    }
+                    OpCode::OpSub => self.binop(f64::sub),
+                    OpCode::OpAdd => self.binop(f64::add),
                     OpCode::OpMult => self.binop(f64::mul),
-                    OpCode::OpDiv  => self.binop(f64::div),
-                    OpCode::OpConstant(idx) => 
-                    {
+                    OpCode::OpDiv => self.binop(f64::div),
+                    OpCode::OpConstant(idx) => {
                         let val = bsrc.fetch_const(*idx);
                         self.push(val);
                     }
-                    OpCode::OpNop => println!("Nop")
+                    OpCode::OpNop => println!("Nop"),
                 }
-            } else { 
-                break InterpretResult::InterpretBreak;
+            } else {
+                break InterpretResult::InterpretOK;
             };
         }
     }
 }
 
-pub fn interpret<const S: usize>(vm: &mut CraftVm<S>, ts: Seq<TokSeqItem>) -> InterpretResult {
-    let chunk:  CraftChunk  = CraftChunk::new(); 
-    let parser: CraftParser = CraftParser::new(ts);
-    if !compile(&chunk, &parser) {
-       InterpretResult::InterpretCompileError
+pub fn interpret<'a, const S: usize>(
+    vm: &mut CraftVm<S>,
+    ts: Seq<TokSeqItem<'a>>,
+) -> InterpretResult {
+    // maybe i'll chain the Seqs ??
+    let chunk = RefCell::new(CraftChunk::new());
+    let mut parser: CraftParser = CraftParser::new(ts, chunk);
+    if !compile(&mut parser) {
+        InterpretResult::InterpretCompileError
     } else {
-        vm.warm(chunk); 
+        vm.warm(parser.chnk.into_inner());
         vm.run()
     }
 }
