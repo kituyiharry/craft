@@ -15,9 +15,9 @@ pub fn disas<'a>(title: &'a str, ch: &'a CraftChunk, chnk: CraftChunkIter<'a>) {
 
 pub fn disas_instr<'a>(ch: &'a CraftChunk, idx: usize, line: usize, ele: &'a OpCode) {
     match ele {
-        OpCode::OpConstant(cidx) => {
+        OpCode::OpCnst(cidx) => {
             let v = ch.fetch_const(*cidx);
-            log::debug!("{idx:04} {line:03} {ele:?}  '{v}'");
+            log::debug!("{idx:04} {line:03} {ele:?}  '{v:?}'");
         }
         _ => {
             log::debug!("{idx:04}  |  {ele:?}");
@@ -28,6 +28,6 @@ pub fn disas_instr<'a>(ch: &'a CraftChunk, idx: usize, line: usize, ele: &'a OpC
 pub fn disas_stack(stck: &[Rc<Cell<CraftValue>>], topidx: usize) {
     (topidx..0).for_each(|i| {
         let v = stck[i].get();
-        log::debug!("[ {v} ]");
+        log::debug!("[ {v:?} ]");
     });
 }

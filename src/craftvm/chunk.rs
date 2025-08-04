@@ -26,10 +26,10 @@ impl CraftChunk {
 
     pub fn add_const(&mut self, val: CraftValue, lineno: usize) {
         let idx = self.cnsts.insert(val);
-        self.emit_byte(OpType::Simple(OpCode::OpConstant(idx)), lineno);
+        self.emit_byte(OpType::Simple(OpCode::OpCnst(idx)), lineno);
     }
 
-    pub fn fetch_const(&self, idx: usize) -> CraftValue {
+    pub fn fetch_const(&self, idx: usize) -> &CraftValue {
         self.cnsts.get(idx)
     }
 

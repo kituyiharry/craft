@@ -82,7 +82,7 @@ let repl () =
                     (*print_token_output tseq;*)
                     let _ = Craftvm.compile (Seq.append tseq (Seq.return (Token.EOF, (lineno+1), 0))) in
                     Buffer.clear buf;
-                    bufstream tseq (lineno) () 
+                    bufstream Seq.empty (lineno) () 
                 )
             else if String.equal bufcont "!reset"  then
                 (

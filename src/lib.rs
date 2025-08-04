@@ -17,7 +17,9 @@ static INIT: Once = Once::new();
 pub fn compile(t: Seq<(craftvm::scanner::CrTokenType, usize, usize)>) -> InterpretResult {
     // let mut curl = 0;
     INIT.call_once(|| { 
-        env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
+        env_logger::Builder::from_env(
+            Env::default().default_filter_or("error")
+        ).format_timestamp_millis().init();
     });
     let ch: CraftChunk = CraftChunk::new();
     let mut vm = CraftVm::<512>::new(ch);
