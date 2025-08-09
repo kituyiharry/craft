@@ -161,3 +161,7 @@ var a = "global";
   var a = "block";
   showA();
 }
+var monday = true
+if (monday) var croissant = "yes";
+
+print croissant;

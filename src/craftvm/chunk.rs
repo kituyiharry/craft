@@ -1,16 +1,16 @@
 use super::common::{OpCode, OpType};
-use super::value::{ConstPool, CraftValue};
+use super::value::{ConstPool, CrValue};
 
 // offset, line number and opcode
 pub type Offset<'a> = (usize, usize, &'a OpCode);
 
-pub struct CraftChunk {
+pub struct CrChunk {
     instr: Vec<OpType>,
     cnsts: ConstPool,
     lines: Vec<usize>, // HINT: RLE encode this for better memory use
 }
 
-impl CraftChunk {
+impl CrChunk {
     pub fn new() -> Self {
         Self {
             instr: vec![],
@@ -24,12 +24,17 @@ impl CraftChunk {
         self.lines.push(lineno);
     }
 
-    pub fn add_const(&mut self, val: CraftValue, lineno: usize) {
-        let idx = self.cnsts.insert(val);
-        self.emit_byte(OpType::Simple(OpCode::OpCnst(idx)), lineno);
+    pub fn add_obj(&mut self, obj: &str) -> usize {
+        self.cnsts.intern(obj)
     }
 
-    pub fn fetch_const(&self, idx: usize) -> &CraftValue {
+    pub fn add_const(&mut self, val: CrValue, lineno: usize) -> usize {
+        let idx = self.cnsts.insert(val);
+        self.emit_byte(OpType::Simple(OpCode::OpCnst(idx)), lineno);
+        idx
+    }
+
+    pub fn fetch_const(&self, idx: usize) -> &CrValue {
         self.cnsts.get(idx)
     }
 
@@ -39,18 +44,18 @@ impl CraftChunk {
     }
 }
 
-impl Default for CraftChunk {
+impl Default for CrChunk {
     fn default() -> Self {
         Self::new()
     }
 }
 
 pub struct CraftChunkIter<'a> {
-    pub source: &'a CraftChunk,
+    pub source: &'a CrChunk,
     offset: usize,
 }
 
-impl<'a> IntoIterator for &'a CraftChunk {
+impl<'a> IntoIterator for &'a CrChunk {
     type Item = Offset<'a>;
     type IntoIter = CraftChunkIter<'a>;
     fn into_iter(self) -> Self::IntoIter {

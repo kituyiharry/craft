@@ -1,9 +1,11 @@
-use std::fmt::Display;
+use std::{fmt::Display};
 
 #[derive(Default, Debug)]
 pub enum OpCode {
     #[default]
     OpNop,
+    OpPop,
+    //
     OpReturn,
     OpCnst(usize),
     // Arithmetic
@@ -25,6 +27,12 @@ pub enum OpCode {
     // Thus, we only need three new instructions.
     OpGreater,
     OpLess,
+    // vars 
+    OpPrint,
+    // Global vars
+    OpDefGlob(usize),
+    OpGetGlob(String),
+    OpSetGlob(String)
 }
 
 impl Display for OpCode {
@@ -75,6 +83,21 @@ impl Display for OpCode {
             OpCode::OpLess => {
                 write!(f, " < ")
             }
+            OpCode::OpPrint => {
+                write!(f, " @print ")
+            }
+            OpCode::OpPop => {
+                write!(f, " []pop ")
+            },
+            OpCode::OpDefGlob(x) => {
+                write!(f, " @declrglobal{{idx:{x}}} ")
+            }, 
+            OpCode::OpGetGlob(x) => {
+                write!(f, " @fetchglobal{{idx:{x}}} ")
+            }, 
+            OpCode::OpSetGlob(x) => {
+                write!(f, " @setvrglobal{{idx:{x}}} ")
+            }, 
         }
     }
 }

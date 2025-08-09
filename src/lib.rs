@@ -4,8 +4,7 @@ use env_logger::{self, Env};
 use ocaml::Seq;
 
 use crate::craftvm::{
-    chunk::CraftChunk,
-    vm::{interpret, CraftVm, InterpretResult},
+    vm::{interpret, CrVm, InterpretResult},
 };
 
 pub mod craftvm;
@@ -21,8 +20,7 @@ pub fn compile(t: Seq<(craftvm::scanner::CrTokenType, usize, usize)>) -> Interpr
             Env::default().default_filter_or("error")
         ).format_timestamp_millis().init();
     });
-    let ch: CraftChunk = CraftChunk::new();
-    let mut vm = CraftVm::<512>::new(ch);
+    let mut vm = CrVm::<512>::new();
     let r = interpret(&mut vm, t);
     log::info!("Finished with result {r:?}");
     r

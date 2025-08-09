@@ -46,11 +46,11 @@ let print_token_output tseq =
 
 let repl () = 
     let buf = Buffer.create 1024 in
-    let _   = Printf.printf "=== CraftVM v0.1.0 (Toy language) ===\n 
+    let _   = Format.printf "=== CraftVM v0.1.0 (Toy language) ===\n 
       \rUse CTRL-C or '!quit' or 'exit' to close the REPL\n 
       \rUse '!compile' to compile using the VM\n" in
     let rec bufstream tseq lineno () = 
-        let _ = Printf.printf ">>> %!" in
+        let _ = Format.printf ">>> %!" in
         let _ =
             Seq.of_dispenser (fun () -> In_channel.input_char In_channel.stdin)
             |> Seq.take_while ((!=)'\n')
@@ -63,28 +63,28 @@ let repl () =
                     (match errs with 
                         | [] -> 
                             let ptext = Ast.show_source p in 
-                            let _ = Printf.printf "%s\n%!" ptext in 
+                            let _ = Format.printf "%s\n%!" ptext in 
                             bufstream tseq (lineno) ()
                         | e  -> 
-                            let _ = Printf.printf "Parse Errors: " in 
+                            let _ = Format.printf "Parse Errors: " in 
                             let _ = print_parse_exprs e in
                             bufstream tseq (lineno) ()
                     )
                 | Error e -> 
-                    Printf.printf "ParseError: %s\n%!" (Ast.show_crafterr e)
+                    Format.printf "ParseError: %s\n%!" (Ast.show_crafterr e)
             )
         else 
             let bufcont = Buffer.contents buf in
             if String.equal bufcont "!quit" || String.equal bufcont "exit" then 
-                (Printf.printf "Goodbye! :-) %!") 
-            else if String.equal bufcont "!compile"  then
+                (Format.printf "Goodbye! :-) %!") 
+            else if String.starts_with ~prefix:"!c" bufcont then
                 ( 
                     (*print_token_output tseq;*)
                     let _ = Craftvm.compile (Seq.append tseq (Seq.return (Token.EOF, (lineno+1), 0))) in
                     Buffer.clear buf;
                     bufstream Seq.empty (lineno) () 
                 )
-            else if String.equal bufcont "!reset"  then
+            else if String.starts_with ~prefix:"!r" bufcont then
                 (
                     Buffer.clear buf;
                     bufstream Seq.empty (lineno) ()
@@ -100,7 +100,7 @@ let repl () =
                         let tseq' = Exec.normalize toks
                             |> Seq.map (fun (t, _l, c) -> (t, lineno, c)) 
                             |> Seq.append tseq in 
-                        (*Printf.print_newline ();*)
+                        (*Format.print_newline ();*)
                         Buffer.clear buf;
                         bufstream tseq' (lineno + 1) ()
                     | errs -> 

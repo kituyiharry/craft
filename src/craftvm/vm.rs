@@ -1,15 +1,13 @@
+#![allow(static_mut_refs)]
 use ocaml::Seq;
+use once_cell::unsync::Lazy;
 use std::{
-    array,
-    cell::{Cell, RefCell},
-    ops::{Add, Div, Mul, Sub},
-    rc::Rc,
+    array, cell::{Cell, RefCell}, collections::{hash_map::VacantEntry, HashMap}, ops::{Add, Div, Mul, Sub}, rc::Rc
 };
 
 use crate::craftvm::value::are_same_type;
-
 use super::compiler::{compile, CraftParser, TokSeqItem};
-use super::{chunk::CraftChunk, common::OpCode, value::CraftValue};
+use super::{chunk::CrChunk, common::OpCode, value::CrValue};
 
 #[derive(Default, Debug, ocaml::ToValue, ocaml::FromValue)]
 pub enum InterpretResult {
@@ -21,27 +19,61 @@ pub enum InterpretResult {
     InterpretRuntimeError,
 }
 
-pub struct CraftVm<const STACKSIZE: usize> {
-    source: Rc<RefCell<CraftChunk>>,
-    vstack: [Cell<CraftValue>; STACKSIZE],
-    stkptr: *mut CraftValue, // stack pointer
+//                 length, capacity, ptr
+type CrAllocData = (usize, usize, *const u8);
+pub static mut CRALLOCA: Lazy<Vec<CrAllocData>> = Lazy::new(||{
+    Vec::with_capacity(64)
+});
+
+// drops vector items
+pub(crate) unsafe fn free() {
+    CRALLOCA.iter().for_each(|(t, c, p)| {
+        log::debug!("freeing at {:?}", *p);
+        drop(Vec::from_raw_parts(*(p) as *mut u8, *t, *c));
+    });
+    CRALLOCA.truncate(0);
+}
+
+pub(crate) unsafe fn alloca(bytes: Vec<u8>) -> (usize, *const u8) {
+    let tot = bytes.len();
+    let cap = bytes.capacity();
+    let ptr = Vec::leak(bytes).as_ptr();
+    CRALLOCA.push((tot, cap, ptr));
+    (tot, ptr)
+}
+
+pub struct CrVm<const STACKSIZE: usize> {
+    source: Rc<RefCell<CrChunk>>,
+    vstack: [Cell<CrValue>; STACKSIZE],
+    stkptr: *mut CrValue, // stack pointer
     stkidx: usize,
+    global: HashMap<String, Rc<Cell<CrValue>>>,
     // sentinel for breaking run loop from other methods ;-) - bad design lol
     iserr : bool,
+    // objects are tracked in alloca and free
+}
+
+impl<const S: usize> Drop for CrVm<S> {
+    fn drop(&mut self) {
+        unsafe { 
+            free(); 
+        };
+    }
 }
 
 #[allow(dead_code)]
-impl<const STACK: usize> CraftVm<STACK> {
-    pub fn new(ch: CraftChunk) -> Self {
+impl<const STACK: usize> CrVm<STACK> {
+    pub fn new() -> Self {
         log::debug!("Creating new VM");
-        let vstck = array::from_fn::<_, STACK, _>(|_idx| Cell::new(CraftValue::CrNil));
+        let vstck = array::from_fn::<_, STACK, _>(|_idx| Cell::new(CrValue::CrNil));
         let stcki = 0;
         let stckp = vstck[stcki].as_ptr();
         Self {
-            source: Rc::new(RefCell::new(ch)),
+            source: Rc::new(RefCell::new(CrChunk::new())),
             vstack: vstck,
             stkptr: stckp,
             stkidx: stcki,
+            global: HashMap::new(),
             iserr:  false,
         }
     }
@@ -53,25 +85,28 @@ impl<const STACK: usize> CraftVm<STACK> {
     }
 
     #[inline]
-    fn push(&mut self, val: CraftValue) {
+    fn push(&mut self, val: CrValue) {
         self.vstack[self.stkidx].set(val);
         self.stkidx += 1;
         self.stkptr = self.vstack[self.stkidx].as_ptr();
         log::debug!("pushed value {val:?} at {}", self.stkidx);
     }
 
-    //#[inline]
-    fn pop(&mut self) -> *mut CraftValue {
-        self.stkidx -= 1;
-        self.stkptr = self.vstack[self.stkidx].as_ptr();
-        unsafe {
-            log::debug!("popped value {:?} at ({})", *(self.stkptr), self.stkidx);
-        };
+    #[inline]
+    fn pop(&mut self) -> *mut CrValue {
+        // TODO: use asserts
+        if self.stkidx > 0 {
+            self.stkidx -= 1;
+            self.stkptr = self.vstack[self.stkidx].as_ptr();
+            unsafe {
+                log::debug!("popped value {:?} at ({})", *(self.stkptr), self.stkidx);
+            };
+        }
         self.stkptr
     }
 
     #[inline]
-    fn binop(&mut self, f: fn(CraftValue, CraftValue) -> CraftValue) {
+    fn binop(&mut self, f: fn(CrValue, CrValue) -> CrValue) {
         unsafe {
             let b = self.pop();
             let a = self.pop();
@@ -89,6 +124,7 @@ impl<const STACK: usize> CraftVm<STACK> {
     //    f(self.vstack[self.stkidx-dist].as_ptr())
     // }
 
+    // make sure to restore locally popped values
     fn dump(&self) {
         log::debug!("========== stack =============");
         let mut pos = self.stkidx;
@@ -100,7 +136,7 @@ impl<const STACK: usize> CraftVm<STACK> {
         log::debug!("========== stack =============");
     }
 
-    pub fn warm(&mut self, chunk: CraftChunk) {
+    pub fn warm(&mut self, chunk: CrChunk) {
         self.reset_stack();
         self.source.replace(chunk);
     }
@@ -119,76 +155,128 @@ impl<const STACK: usize> CraftVm<STACK> {
                 if log::log_enabled!(log::Level::Debug) {
                     super::debug::disas_instr(&bsrc, _idx, _line, op);
                 }
-
                 // TODO: in the book, they peek before executing
                 // In the book some instructions are 'merged' as well so we have to 
                 // look ahead in this version as well. Its best to just implement all instructions 
                 // directly for simplicity for future reference i.e for >=, <= .. etc
                 match op {
+                    OpCode::OpNop => log::debug!("Nop instruction"),
+                    OpCode::OpPop => { self.pop(); },
                     OpCode::OpReturn => {
-                        let val = self.pop();
-                        unsafe { println!("{:?}", *val) };
-                        return InterpretResult::InterpretOK;
-                    }
+                                        //if self.stkidx != 0 {
+                                            //let val = self.pop();
+                                            //unsafe { println!("{:?}", *val) };
+                                        //}
+                                        return InterpretResult::InterpretOK;
+                                    }
                     OpCode::OpNegate => {
-                        unsafe {
-                            let pop = self.pop();
-                            if matches!(*pop, CraftValue::CrNumber(_)) {
-                                self.push(-(*pop)) ;
-                            } else {
-                                log::error!("expected a number at stack top");
+                                        unsafe {
+                                            let pop = self.pop();
+                                            if matches!(*pop, CrValue::CrNumber(_)) {
+                                                self.push(-(*pop)) ;
+                                            } else {
+                                                self.push(*pop);
+                                                log::error!("expected a number at stack top");
+                                                self.dump();
+                                                return InterpretResult::InterpretCompileError;
+                                            }
+                                        }
+                                    }
+                    OpCode::OpNot  => {
+                                        unsafe {
+                                            let pop = self.pop();
+                                            if matches!(*pop, CrValue::CrBool(_) | CrValue::CrNil) {
+                                                self.push(!(*pop)) ;
+                                            } else {
+                                                self.push(*pop);
+                                                log::error!("expected a bool-like at stack top");
+                                                self.dump();
+                                                return InterpretResult::InterpretCompileError;
+                                            }
+                                        }
+                                    },
+                    OpCode::OpSub  => self.binop(CrValue::sub),
+                    OpCode::OpAdd  => self.binop(CrValue::add),
+                    OpCode::OpMult => self.binop(CrValue::mul),
+                    OpCode::OpDiv  => self.binop(CrValue::div),
+                    OpCode::OpCnst(idx) => self.push(*bsrc.fetch_const(*idx)),
+                    OpCode::OpTrue  => self.push(CrValue::CrBool(true)),
+                    OpCode::OpFalse => self.push(CrValue::CrBool(false)),
+                    OpCode::OpNil   => self.push(CrValue::CrNil),
+                    OpCode::OpEqual => {
+                                        let a = self.pop();
+                                        let b = self.pop();
+                                        unsafe  {
+                                            if are_same_type(*a, *b) {
+                                                log::debug!("comparing {:?} == {:?}", *a, *b);
+                                                self.push(CrValue::CrBool(*a == *b));
+                                            } else {
+                                                log::error!("attempt to compare non-matched types");
+                                                self.push(*b);
+                                                self.push(*a);
+                                                self.dump();
+                                                break InterpretResult::InterpretCompileError;
+                                            }
+                                        }
+                                    },
+                    OpCode::OpGreater => {
+                                        self.binop(|l, r| {
+                                            log::debug!("comparing {l:?} > {r:?}");
+                                            CrValue::CrBool(l > r)
+                                        });
+                                    },
+                    OpCode::OpLess => {
+                                        self.binop(|l, r| {
+                                            log::debug!("comparing {l:?} < {r:?}");
+                                            CrValue::CrBool(l < r)
+                                        });
+                                    },
+                    OpCode::OpPrint => {
+                                        unsafe { 
+                                            println!("{:}", *(self.pop())) 
+                                        }
+                                    }
+                    OpCode::OpDefGlob(idx) => {
+                        // likely a string object
+                        // This code doesn’t check to see if the key is already in the table. 
+                        // Lox is pretty lax with global variables and lets you redefine them without error. 
+                        // That’s useful in a REPL session, so the VM supports that 
+                        // by simply overwriting the value if the key happens to already be in the hash table.
+                        
+                        // get the var name as string
+                        let identobj = bsrc.fetch_const(*idx).to_string();
+                        unsafe { 
+                            let v = *self.pop();
+                            self.global.insert(identobj, Rc::new(Cell::new(v))); 
+                        }
+                    },
+                    OpCode::OpGetGlob(g) => {
+                        match self.global.get(g) {
+                            Some(v) => {
+                                self.push(v.clone().get());
+                            },
+                            None    => {
+                                log::error!("Undefined global variable: {g}");
                                 self.dump();
-                                return InterpretResult::InterpretCompileError;
+                                break InterpretResult::InterpretCompileError
+                            }
+                        }
+                    },
+                    OpCode::OpSetGlob(s) => {
+                        let nv = self.pop();
+                        match self.global.entry(s.clone()) {
+                            std::collections::hash_map::Entry::Occupied(o) => {
+                                unsafe {
+                                    o.get().set(*nv);
+                                }
+                            },
+                            std::collections::hash_map::Entry::Vacant(_v) => {
+                                log::error!("tried to set undefined variable {s}");
+                                self.dump();
+                                break InterpretResult::InterpretCompileError
                             }
                         }
                     }
-                    OpCode::OpNot  => {
-                        unsafe {
-                            let pop = self.pop();
-                            if matches!(*pop, CraftValue::CrBool(_) | CraftValue::CrNil) {
-                                self.push(!(*pop)) ;
-                            } else {
-                                log::error!("expected a bool at stack top");
-                                self.dump();
-                                return InterpretResult::InterpretCompileError;
-                            }
-                        }
-                    },
-                    OpCode::OpSub  => self.binop(CraftValue::sub),
-                    OpCode::OpAdd  => self.binop(CraftValue::add),
-                    OpCode::OpMult => self.binop(CraftValue::mul),
-                    OpCode::OpDiv  => self.binop(CraftValue::div),
-                    OpCode::OpCnst(idx) => self.push(*bsrc.fetch_const(*idx)),
-                    OpCode::OpNop   => log::debug!("Nop instruction"),
-                    OpCode::OpTrue  => self.push(CraftValue::CrBool(true)),
-                    OpCode::OpFalse => self.push(CraftValue::CrBool(false)),
-                    OpCode::OpNil   => self.push(CraftValue::CrNil),
-                    OpCode::OpEqual => {
-                        let a = self.pop();
-                        let b = self.pop();
-                        unsafe  {
-                            if are_same_type(*a, *b) {
-                                log::debug!("comparing {:?} == {:?}", *a, *b);
-                                self.push(CraftValue::CrBool(*a == *b));
-                            } else {
-                                log::error!("attempt to compare non-matched types");
-                                self.dump();
-                                break InterpretResult::InterpretCompileError;
-                            }
-                        }
-                    },
-                    OpCode::OpGreater => {
-                        self.binop(|l, r| {
-                            log::debug!("comparing {l:?} > {r:?}");
-                            CraftValue::CrBool(l > r)
-                        });
-                    },
-                    OpCode::OpLess => {
-                        self.binop(|l, r| {
-                            log::debug!("comparing {l:?} < {r:?}");
-                            CraftValue::CrBool(l < r)
-                        });
-                    },
                 }
                 if self.iserr {
                     self.dump();
@@ -201,12 +289,18 @@ impl<const STACK: usize> CraftVm<STACK> {
     }
 }
 
+impl<const STACK: usize> Default for CrVm<STACK> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn interpret<'a, const S: usize>(
-    vm: &mut CraftVm<S>,
+    vm: &mut CrVm<S>,
     ts: Seq<TokSeqItem<'a>>,
 ) -> InterpretResult {
     // maybe i'll chain the Seqs ??
-    let chunk = RefCell::new(CraftChunk::new());
+    let chunk: RefCell<CrChunk> = RefCell::new(CrChunk::new());
     let mut parser: CraftParser = CraftParser::new(ts, chunk);
     if !compile(&mut parser) {
         log::error!("Compilation Error");
