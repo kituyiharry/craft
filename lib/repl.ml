@@ -64,7 +64,8 @@ let repl () =
                         | [] -> 
                             let ptext = Ast.show_source p in 
                             let _ = Format.printf "%s\n%!" ptext in 
-                            bufstream tseq (lineno) ()
+                            let _ = Craftvm.compile (Seq.append tseq (Seq.return (Token.EOF, (lineno+1), 0))) in
+                            bufstream Seq.empty (lineno) ()
                         | e  -> 
                             let _ = Format.printf "Parse Errors: " in 
                             let _ = print_parse_exprs e in
@@ -75,7 +76,7 @@ let repl () =
             )
         else 
             let bufcont = Buffer.contents buf in
-            if String.equal bufcont "!quit" || String.equal bufcont "exit" then 
+            if String.equal bufcont "!q" || String.equal bufcont "exit" then 
                 (Format.printf "Goodbye! :-) %!") 
             else if String.starts_with ~prefix:"!c" bufcont then
                 ( 
@@ -84,6 +85,18 @@ let repl () =
                     Buffer.clear buf;
                     bufstream Seq.empty (lineno) () 
                 )
+            else if String.starts_with ~prefix:"!g" bufcont then
+                let _ = Craftvm.debug_globals () in
+                Buffer.clear buf;
+                bufstream tseq (lineno) () 
+            else if String.starts_with ~prefix:"!src" bufcont then
+                let _ = Craftvm.debug_source () in
+                Buffer.clear buf;
+                bufstream tseq (lineno) () 
+            else if String.starts_with ~prefix:"!s" bufcont then
+                let _ = Craftvm.debug_stack () in
+                Buffer.clear buf;
+                bufstream tseq (lineno) () 
             else if String.starts_with ~prefix:"!r" bufcont then
                 (
                     Buffer.clear buf;

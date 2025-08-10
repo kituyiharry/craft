@@ -5,3 +5,6 @@ open! Bigarray
 (* file: lib.rs *)
 
 external compile: (Token.tokentype * int * int) Seq.t -> Compiler.compileresult = "compile"
+external debug_stack: unit -> unit = "debug_stack"
+external debug_globals: unit -> unit = "debug_globals"
+external debug_source: unit -> unit = "debug_source"

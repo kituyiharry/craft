@@ -2,10 +2,10 @@
 use ocaml::Seq;
 use once_cell::unsync::Lazy;
 use std::{
-    array, cell::{Cell, RefCell}, collections::{hash_map::VacantEntry, HashMap}, ops::{Add, Div, Mul, Sub}, rc::Rc
+    array, cell::{Cell, RefCell}, collections::HashMap, ops::{Add, Div, Mul, Sub}, rc::Rc
 };
 
-use crate::craftvm::value::are_same_type;
+use crate::craftvm::{debug, value::are_same_type};
 use super::compiler::{compile, CraftParser, TokSeqItem};
 use super::{chunk::CrChunk, common::OpCode, value::CrValue};
 
@@ -125,15 +125,30 @@ impl<const STACK: usize> CrVm<STACK> {
     // }
 
     // make sure to restore locally popped values
-    fn dump(&self) {
-        log::debug!("========== stack =============");
+    pub fn dump_stack(&self) {
+        println!("========== stack =============");
         let mut pos = self.stkidx;
         while pos > 0 {
-            log::debug!("\t {pos} ==> {:?}", self.vstack[pos]);
+            println!("\t {pos} ==> {:?}", self.vstack[pos]);
             pos-=1;
         }
-        log::debug!("\t {pos} ==> {:?}", self.vstack[pos]);
-        log::debug!("========== stack =============");
+        println!("\t{pos} ==> {:?}", self.vstack[pos]);
+        println!("========== stack =============");
+    }
+
+    pub fn dump_globals(&self) {
+        println!("========== globals =============");
+        self.global.iter().for_each(|(k, v)| {
+            println!("\t{k} => {}", v.clone().get())
+        });
+        println!("========== globals =============");
+    }
+
+    pub fn dump_src(&self) {
+        println!("========== source =============");
+        let bsrc   = self.source.borrow();
+        debug::disas("source", &self.source.clone().borrow(), bsrc.into_iter());
+        println!("========== source =============");
     }
 
     pub fn warm(&mut self, chunk: CrChunk) {
@@ -177,7 +192,7 @@ impl<const STACK: usize> CrVm<STACK> {
                                             } else {
                                                 self.push(*pop);
                                                 log::error!("expected a number at stack top");
-                                                self.dump();
+                                                self.dump_stack();
                                                 return InterpretResult::InterpretCompileError;
                                             }
                                         }
@@ -190,7 +205,7 @@ impl<const STACK: usize> CrVm<STACK> {
                                             } else {
                                                 self.push(*pop);
                                                 log::error!("expected a bool-like at stack top");
-                                                self.dump();
+                                                self.dump_stack();
                                                 return InterpretResult::InterpretCompileError;
                                             }
                                         }
@@ -214,7 +229,7 @@ impl<const STACK: usize> CrVm<STACK> {
                                                 log::error!("attempt to compare non-matched types");
                                                 self.push(*b);
                                                 self.push(*a);
-                                                self.dump();
+                                                self.dump_stack();
                                                 break InterpretResult::InterpretCompileError;
                                             }
                                         }
@@ -257,7 +272,7 @@ impl<const STACK: usize> CrVm<STACK> {
                             },
                             None    => {
                                 log::error!("Undefined global variable: {g}");
-                                self.dump();
+                                self.dump_stack();
                                 break InterpretResult::InterpretCompileError
                             }
                         }
@@ -272,14 +287,14 @@ impl<const STACK: usize> CrVm<STACK> {
                             },
                             std::collections::hash_map::Entry::Vacant(_v) => {
                                 log::error!("tried to set undefined variable {s}");
-                                self.dump();
+                                self.dump_stack();
                                 break InterpretResult::InterpretCompileError
                             }
                         }
                     }
                 }
                 if self.iserr {
-                    self.dump();
+                    self.dump_stack();
                     break InterpretResult::InterpretCompileError; 
                 }
             } else {
