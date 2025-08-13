@@ -5,8 +5,7 @@ use crate::craftvm::{common::OpType, value::{CrObjVal, CrValue}};
 use ocaml::Seq;
 use once_cell::unsync::Lazy;
 use std::{
-    cell::{RefCell, UnsafeCell},
-    fmt::Debug,
+    array, cell::{RefCell, UnsafeCell}, fmt::Debug
 };
 
 pub type TokSeqItem<'a> = (CrTokenType<'a>, usize, usize);
@@ -36,11 +35,12 @@ impl Default for TokenData<'_> {
 
 // NB: if previous is EoF, then current
 pub struct CraftParser<'a> {
-    tokseq: Seq<(CrTokenType<'a>, usize, usize)>,
-    current: RefCell<TokenData<'a>>,
-    previous: RefCell<TokenData<'a>>,
-    pub state: RefCell<ParseState>,
-    pub chnk: RefCell<CrChunk>,
+    tokseq:     Seq<(CrTokenType<'a>, usize, usize)>,
+    current:    RefCell<TokenData<'a>>,
+    previous:   RefCell<TokenData<'a>>,
+    pub state:  RefCell<ParseState>,
+    pub chnk:   RefCell<CrChunk>,
+    pub locs:   RefCell<CraftLocState<'a>>,
 }
 
 #[derive(Debug)]
@@ -100,6 +100,38 @@ pub struct CraftParseRule {
     pub prefix: Option<ParseFn>,
     pub infix:  Option<ParseFn>,
     pub precdc: Precedence,
+}
+
+static MAX_LOCAL_COUNT: isize = 255;
+
+#[derive(Debug)]
+pub struct CraftLocal<'a> {
+    pub name:  CrTokenType<'a>,
+    pub depth: isize,
+}
+
+impl<'a> Default for CraftLocal<'a> {
+    fn default() -> Self {
+        Self { name: Default::default(), depth: -1 }
+    }
+}
+
+pub struct CraftLocState<'a> {
+    pub locals: [RefCell<CraftLocal<'a>>; MAX_LOCAL_COUNT as usize],
+    pub lcount: isize, 
+    pub scope_depth: usize,
+}
+
+impl<'a> Default for CraftLocState<'a>  {
+    fn default() -> Self {
+        Self { 
+            locals:     array::from_fn(|_idx| {
+                RefCell::new(CraftLocal::default())
+            }), 
+            lcount:      0, 
+            scope_depth: 0, 
+        }
+    }
 }
 
 // I was in a hurry :-(
@@ -385,6 +417,7 @@ impl<'a> CraftParser<'a> {
             current:  RefCell::new(TokenData::default()),
             previous: RefCell::new(TokenData::default()),
             state:    RefCell::new(ParseState::default()),
+            locs:   RefCell::new(CraftLocState::default()),
         }
     }
 
@@ -480,9 +513,30 @@ impl<'a> CraftParser<'a> {
         }
     }
 
+    fn resolve_local(&self, name: &CrTokenType) -> isize {
+        let loci = self.locs.borrow();
+        let tot = loci.lcount;
+        for i in (0..=tot).rev() {
+            let l = loci.locals[i as usize].borrow();
+            log::debug!("local: {i} is {l:?}");
+        }
+        for i in (0..=tot).rev() {
+            log::debug!("checking at local: {i} of {tot}");
+            let l = loci.locals[i as usize].borrow();
+            if l.name.eq(name) {
+                log::debug!("found at local position: {i}");
+                return i;
+            }
+        }
+        -1
+    }
+
     fn named_var(&mut self, _assgnprec: bool) -> ParseRs {
+
         let pret = self.previous.borrow().token.clone();
         let line = self.previous.borrow().line;
+        let argl = self.resolve_local(&pret);
+        log::debug!("local resolved finished with {argl}");
         match pret {
             // identifier_const name
             CrTokenType::CrIdentifier(s) => { 
@@ -503,11 +557,19 @@ impl<'a> CraftParser<'a> {
                     log::debug!("accepted named_var with lower precedence to or= assignment");
                     let _ = self.expression();
                     let mut ch = self.chnk.borrow_mut();
-                    ch.emit_byte(OpType::Simple(common::OpCode::OpSetGlob((*s).to_owned())), line);
+                    if argl != -1 {
+                        ch.emit_byte(OpType::Simple(common::OpCode::OpSetLoc(argl as usize)), line);
+                    } else {
+                        ch.emit_byte(OpType::Simple(common::OpCode::OpSetGlob((*s).to_owned())), line);
+                    }
                 } else {
                     log::debug!("not a named_var assignment");
                     let mut ch = self.chnk.borrow_mut();
-                    ch.emit_byte(OpType::Simple(common::OpCode::OpGetGlob((*s).to_owned())), line);
+                    if argl  != -1 {
+                        ch.emit_byte(OpType::Simple(common::OpCode::OpGetLoc(argl as usize)), line);
+                    } else {
+                        ch.emit_byte(OpType::Simple(common::OpCode::OpGetGlob((*s).to_owned())), line);
+                    }
                 }
             }
             ref s => {
@@ -702,17 +764,90 @@ impl<'a> CraftParser<'a> {
         Ok(())
     }
 
+    fn begin_scope(&mut self) {
+        self.locs.borrow_mut().scope_depth += 1
+    }
+
+    fn block(&mut self) -> ParseRs {
+        while !self.check(CrTokenType::CrRightBrace) && !self.check(CrTokenType::CrEof) {
+           self.declaration()?;
+        }
+        self.consume(CrTokenType::CrRightBrace, "expect closing brace")
+    }
+
+    fn end_scope(&mut self) {
+        let mut loci = self.locs.borrow_mut(); 
+        let mut ch = self.chnk.borrow_mut();
+        loci.scope_depth -= 1;
+        let ln = self.previous.borrow().line;
+        while loci.lcount > 0 && (loci.locals[(loci.lcount as usize) - 1].borrow().depth as usize) > (loci.scope_depth)  {
+            ch.emit_byte(OpType::Simple(common::OpCode::OpPop), ln);
+            loci.lcount -= 1;
+        }
+    }
+
     fn statement(&mut self) -> ParseRs {
         log::debug!("accepted statement!");
         if self.mtch(CrTokenType::CrPrint) || self.mtch(CrTokenType::CrPrintln) {
-           return self.print_statement()
+           self.print_statement()
+        } else if self.mtch(CrTokenType::CrLeftBrace) {
+            self.begin_scope();
+            let b = self.block();
+            self.end_scope();
+            b
+        } else {
+            self.expr_statement()
         }
-        // Ok(())
-        self.expr_statement()
+    }
+
+    fn add_local(&mut self, tok: CrTokenType<'a>) {
+        log::debug!("adding local {tok:?}");
+        if self.locs.borrow().lcount == MAX_LOCAL_COUNT {
+            self.error_at(&self.previous.borrow(), "Too Many local vars!!");
+            return;
+        }
+        let c = self.locs.borrow().lcount;
+        self.locs.borrow_mut().lcount += 1;
+        let binding = self.locs.borrow();
+        let mut l = binding.locals[c as usize].borrow_mut(); 
+        l.name = tok; 
+        l.depth = self.locs.borrow().scope_depth as isize;
+    }
+
+    // declareVariable
+    fn decl_var(&mut self) -> ParseRs {
+        let scpd = self.locs.borrow().scope_depth;
+        if  scpd == 0 {
+            return Ok(());
+        }
+        let lcnt = self.locs.borrow().lcount;
+        let tok = self.previous.borrow().token.clone();
+        for i in (0..(lcnt)).rev() {
+            let l1 = &self.locs.borrow().locals[i as usize]; 
+            let l = l1.borrow();
+            log::debug!("check {l:?} for redeclarations");
+            if l.depth != -1 && l.depth < (scpd as isize) {
+                log::debug!("no redeclarations variables");
+                break;
+            }
+            if l.name.eq(&tok) {
+                log::error!("possible var redeclaration of {tok:?}");
+                self.error_at(&self.previous.borrow(), "");
+                return Err("Var redeclaration!".into());
+            }
+        }
+        self.add_local(tok);
+        Ok(())
     }
 
     fn parse_var(&mut self, message: &'static str) -> Result<usize, String> {
         self.consume(CrTokenType::CrIdentifier(""), message)?;
+
+        self.decl_var()?;
+        if self.locs.borrow().scope_depth > 0 {
+            return  Ok(0);
+        }
+
         let prev = self.previous.borrow();
         match prev.token {
             CrTokenType::CrIdentifier(ident) => {
@@ -747,6 +882,9 @@ impl<'a> CraftParser<'a> {
         let _ = self.consume_silent(CrTokenType::CrSemicolon, "optional closer");
 
         // defineVariable
+        if self.locs.borrow().scope_depth > 0 {
+            return Ok(());
+        }
         self.chnk.borrow_mut().emit_byte(
             OpType::Simple(common::OpCode::OpDefGlob(global)), 
             line
@@ -845,7 +983,7 @@ impl<'a> CraftParser<'a> {
 
         if log::log_enabled!(log::Level::Debug) {
             let ch = self.chnk.borrow();
-            super::debug::disas("== dump ==", &ch, ch.into_iter());
+            super::debug::disas(&ch, ch.into_iter());
         }
 
         state.panic_md = true;

@@ -89,7 +89,7 @@ impl<const STACK: usize> CrVm<STACK> {
         self.vstack[self.stkidx].set(val);
         self.stkidx += 1;
         self.stkptr = self.vstack[self.stkidx].as_ptr();
-        log::debug!("pushed value {val:?} at {}", self.stkidx);
+        log::debug!("pushed value {val:?} at {}", self.stkidx-1);
     }
 
     #[inline]
@@ -99,7 +99,7 @@ impl<const STACK: usize> CrVm<STACK> {
             self.stkidx -= 1;
             self.stkptr = self.vstack[self.stkidx].as_ptr();
             unsafe {
-                log::debug!("popped value {:?} at ({})", *(self.stkptr), self.stkidx);
+                log::debug!("popped value {:?} at ({})", *(self.stkptr), self.stkidx+1);
             };
         }
         self.stkptr
@@ -147,7 +147,7 @@ impl<const STACK: usize> CrVm<STACK> {
     pub fn dump_src(&self) {
         println!("========== source =============");
         let bsrc   = self.source.borrow();
-        debug::disas("source", &self.source.clone().borrow(), bsrc.into_iter());
+        debug::disas(&self.source.clone().borrow(), bsrc.into_iter());
         println!("========== source =============");
     }
 
@@ -291,7 +291,17 @@ impl<const STACK: usize> CrVm<STACK> {
                                 break InterpretResult::InterpretCompileError
                             }
                         }
-                    }
+                    },
+                    OpCode::OpGetLoc(n) => {
+                        log::debug!("getting local at stack pos: {}", *n);
+                        self.push(self.vstack[*n].get());
+                    },
+                    OpCode::OpSetLoc(n) => {
+                        log::debug!("setting local at stack pos: {}", *n);
+                        unsafe {
+                            self.vstack[*n].set(*self.stkptr);
+                        }
+                    },
                 }
                 if self.iserr {
                     self.dump_stack();

@@ -32,7 +32,10 @@ pub enum OpCode {
     // Global vars
     OpDefGlob(usize),
     OpGetGlob(String),
-    OpSetGlob(String)
+    OpSetGlob(String),
+    // Local Vars
+    OpGetLoc(usize),
+    OpSetLoc(usize),
 }
 
 impl Display for OpCode {
@@ -98,6 +101,12 @@ impl Display for OpCode {
             OpCode::OpSetGlob(x) => {
                 write!(f, " @setvrglobal{{idx:{x}}} ")
             }, 
+            OpCode::OpGetLoc(u) => {
+                write!(f, " @getvrlocal{{idx:{u}}} ")
+            },
+            OpCode::OpSetLoc(u) => {
+                write!(f, " @setvrlocal{{idx:{u}}} ")
+            }
         }
     }
 }

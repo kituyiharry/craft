@@ -6,8 +6,8 @@ use super::{
     value::CrValue,
 };
 
-pub fn disas<'a>(title: &'a str, ch: &'a CrChunk, chnk: CraftChunkIter<'a>) {
-    println!("== {title:?} ==");
+pub fn disas<'a>(ch: &'a CrChunk, chnk: CraftChunkIter<'a>) {
+    //println!("== {title:?} ==");
     for (idx, line, ele) in chnk {
         disas_instr(ch, idx, line, ele);
     }

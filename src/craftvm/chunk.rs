@@ -78,7 +78,7 @@ impl<'a> Iterator for CraftChunkIter<'a> {
                 OpType::Simple(ref op) => {
                     self.offset += 1;
                     Some((i, self.source.lines[i], op))
-                }
+                },
             }
         }
     }
