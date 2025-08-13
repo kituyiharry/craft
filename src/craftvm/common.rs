@@ -34,8 +34,8 @@ pub enum OpCode {
     OpGetGlob(String),
     OpSetGlob(String),
     // Local Vars
-    OpGetLoc(usize),
-    OpSetLoc(usize),
+    OpGetLoc(String, usize),
+    OpSetLoc(String, usize),
 }
 
 impl Display for OpCode {
@@ -101,11 +101,11 @@ impl Display for OpCode {
             OpCode::OpSetGlob(x) => {
                 write!(f, " @setvrglobal{{idx:{x}}} ")
             }, 
-            OpCode::OpGetLoc(u) => {
-                write!(f, " @getvrlocal{{idx:{u}}} ")
+            OpCode::OpGetLoc(s, u) => {
+                write!(f, " @getvrlocal{{{s}:idx:{u}}} ")
             },
-            OpCode::OpSetLoc(u) => {
-                write!(f, " @setvrlocal{{idx:{u}}} ")
+            OpCode::OpSetLoc(s, u) => {
+                write!(f, " @setvrlocal{{{s}:idx:{u}}} ")
             }
         }
     }

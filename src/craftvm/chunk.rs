@@ -52,7 +52,7 @@ impl Default for CrChunk {
 
 pub struct CraftChunkIter<'a> {
     pub source: &'a CrChunk,
-    offset: usize,
+    pub offset: usize,
 }
 
 impl<'a> IntoIterator for &'a CrChunk {

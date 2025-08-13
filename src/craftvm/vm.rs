@@ -162,7 +162,7 @@ impl<const STACK: usize> CrVm<STACK> {
         // To avoid being told we are "modifying something immutable"
         let srclne = self.source.clone();
         let bsrc   = srclne.borrow_mut();
-        let mut instrptr = bsrc.into_iter().peekable();
+        let mut instrptr = bsrc.into_iter();
 
         // start vm thread
         loop {
@@ -292,14 +292,15 @@ impl<const STACK: usize> CrVm<STACK> {
                             }
                         }
                     },
-                    OpCode::OpGetLoc(n) => {
-                        log::debug!("getting local at stack pos: {}", *n);
+                    OpCode::OpGetLoc(s, n) => {
+                        log::debug!("getting local `{s}` at stack pos: {}", *n);
                         self.push(self.vstack[*n].get());
                     },
-                    OpCode::OpSetLoc(n) => {
-                        log::debug!("setting local at stack pos: {}", *n);
+                    OpCode::OpSetLoc(s, n) => {
+                        log::debug!("setting local `{s}` at stack pos: {}", *n);
+                        let v = self.pop();
                         unsafe {
-                            self.vstack[*n].set(*self.stkptr);
+                            self.vstack[*n].set(*v);
                         }
                     },
                 }

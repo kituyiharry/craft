@@ -562,7 +562,7 @@ impl<'a> CraftParser<'a> {
                     let _ = self.expression();
                     let mut ch = self.chnk.borrow_mut();
                     if argl != -1 {
-                        ch.emit_byte(OpType::Simple(common::OpCode::OpSetLoc(argl as usize)), line);
+                        ch.emit_byte(OpType::Simple(common::OpCode::OpSetLoc(s.into(), argl as usize)), line);
                     } else {
                         ch.emit_byte(OpType::Simple(common::OpCode::OpSetGlob((*s).to_owned())), line);
                     }
@@ -570,7 +570,7 @@ impl<'a> CraftParser<'a> {
                     log::debug!("not a named_var assignment");
                     let mut ch = self.chnk.borrow_mut();
                     if argl  != -1 {
-                        ch.emit_byte(OpType::Simple(common::OpCode::OpGetLoc(argl as usize)), line);
+                        ch.emit_byte(OpType::Simple(common::OpCode::OpGetLoc(s.into(), argl as usize)), line);
                     } else {
                         ch.emit_byte(OpType::Simple(common::OpCode::OpGetGlob((*s).to_owned())), line);
                     }
