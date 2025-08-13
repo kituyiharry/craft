@@ -525,6 +525,10 @@ impl<'a> CraftParser<'a> {
             let l = loci.locals[i as usize].borrow();
             if l.name.eq(name) {
                 log::debug!("found at local position: {i}");
+                // sentinel for self-redeclaration
+                if l.depth == -1 {
+                    self.error_at(&self.previous.borrow(), "Can't read local variable in its own initializer.");
+                }
                 return i;
             }
         }
@@ -811,7 +815,8 @@ impl<'a> CraftParser<'a> {
         let binding = self.locs.borrow();
         let mut l = binding.locals[c as usize].borrow_mut(); 
         l.name = tok; 
-        l.depth = self.locs.borrow().scope_depth as isize;
+        //l.depth = self.locs.borrow().scope_depth as isize;
+        l.depth = -1;
     }
 
     // declareVariable
@@ -865,6 +870,11 @@ impl<'a> CraftParser<'a> {
         }
     }
 
+    fn mark_init(&mut self) {
+        let loci = self.locs.borrow(); 
+        loci.locals[(loci.lcount - 1) as usize].borrow_mut().depth = loci.scope_depth as isize;
+    }
+
     fn var_decl(&mut self) -> ParseRs {
         let global = self.parse_var("Expect var decl")?;
 
@@ -883,6 +893,8 @@ impl<'a> CraftParser<'a> {
 
         // defineVariable
         if self.locs.borrow().scope_depth > 0 {
+            // markInitialized
+            self.mark_init();
             return Ok(());
         }
         self.chnk.borrow_mut().emit_byte(
