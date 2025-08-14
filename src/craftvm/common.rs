@@ -39,6 +39,8 @@ pub enum OpCode {
     // Conds
     OpJumpIfFalse(usize),
     OpJump(usize),
+    // Loops
+    OpLoop(usize),
 }
 
 impl Display for OpCode {
@@ -96,13 +98,13 @@ impl Display for OpCode {
                 write!(f, "<-pop")
             },
             OpCode::OpDefGlob(x) => {
-                write!(f, "@declrglobal{{idx:{x}}} ")
+                write!(f, "@declrglobal{{name:{x}}} ")
             }, 
             OpCode::OpGetGlob(x) => {
-                write!(f, "@fetchglobal{{idx:{x}}}")
+                write!(f, "@fetchglobal{{name:{x}}}")
             }, 
             OpCode::OpSetGlob(x) => {
-                write!(f, "@setvrglobal{{idx:{x}}}")
+                write!(f, "@setvrglobal{{name:{x}}}")
             }, 
             OpCode::OpGetLoc(s, u) => {
                 write!(f, "@getvrlocal{{{s}:idx:{u}}}")
@@ -115,6 +117,9 @@ impl Display for OpCode {
             },
             OpCode::OpJump(offset) => {
                 write!(f, "@jump({offset})")
+            },
+            OpCode::OpLoop(location) => {
+                write!(f, "@loop(locidx={location})")
             },
         }
     }

@@ -21,7 +21,7 @@ pub fn compile(t: Seq<(craftvm::scanner::CrTokenType, usize, usize)>) -> Interpr
     INIT.call_once(|| { 
         env_logger::Builder::from_env(
             Env::default().default_filter_or("error")
-        ).format_timestamp_millis().init();
+        ).format_timestamp(None).init();
     });
     let r = unsafe { interpret(&mut CRVM, t) };
     log::info!("Finished with result {r:?}");

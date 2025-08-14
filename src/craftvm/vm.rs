@@ -2,10 +2,10 @@
 use ocaml::Seq;
 use once_cell::unsync::Lazy;
 use std::{
-    array, cell::{Cell, RefCell}, collections::HashMap, ops::{Add, Div, Mul, Sub}, rc::Rc
+    array, cell::{Cell, RefCell}, collections::HashMap, ops::{Add, Div, Mul, Sub}, rc::Rc, thread::{sleep, sleep_ms}
 };
 
-use crate::craftvm::{debug, value::are_same_type};
+use crate::craftvm::{debug::{self, disas_stack}, value::are_same_type};
 use super::compiler::{compile, CraftParser, TokSeqItem};
 use super::{chunk::CrChunk, common::OpCode, value::CrValue};
 
@@ -111,9 +111,14 @@ impl<const STACK: usize> CrVm<STACK> {
             let b = self.pop();
             let a = self.pop();
             if are_same_type(*a, *b) {
-                self.push(f(*a, *b));
+                let v = f(*a, *b);
+                log::debug!("f({}, {}) -> {}", *a, *b, v);
+                self.push(v);
             } else {
-                log::error!("Attempt binary op on mistyped values!");
+                self.dump_stack();
+                log::error!("Attempt binary op on mistyped values {} and  {}!", 
+                    *a, *b
+                );
                 self.iserr = true
             }
         }
@@ -129,10 +134,10 @@ impl<const STACK: usize> CrVm<STACK> {
         println!("============= stack ================");
         let mut pos = self.stkidx;
         while pos > 0 {
-            println!("\t {pos} ==> {:?}", self.vstack[pos]);
+            println!("  {pos} ==> {:?}", self.vstack[pos]);
             pos-=1;
         }
-        println!("\t{pos} ==> {:?}", self.vstack[pos]);
+        println!("  {pos} ==> {:?}", self.vstack[pos]);
         println!("============= stack ================");
     }
 
@@ -158,15 +163,19 @@ impl<const STACK: usize> CrVm<STACK> {
 
     pub fn run(&mut self) -> InterpretResult {
         log::debug!("== vm exec ==");
+        self.dump_src();
 
         // To avoid being told we are "modifying something immutable"
         let srclne = self.source.clone();
         let bsrc   = srclne.borrow_mut();
         let mut instrptr = bsrc.into_iter();
 
+
         // start vm thread
         loop {
             if let Some((_idx, _line, op)) = instrptr.next() {
+                //self.dump_stack();
+                //println!("next instr is {op}");
                 if log::log_enabled!(log::Level::Debug) {
                     super::debug::disas_instr(&bsrc, _idx, _line, op);
                 }
@@ -176,18 +185,21 @@ impl<const STACK: usize> CrVm<STACK> {
                 // directly for simplicity for future reference i.e for >=, <= .. etc
                 match op {
                     OpCode::OpNop => log::debug!("Nop instruction"),
-                    OpCode::OpPop => { self.pop(); },
+                    OpCode::OpPop => { let v = self.pop();
+                        unsafe { log::debug!("popped {}", *v); } },
                     OpCode::OpReturn => {
                                         //if self.stkidx != 0 {
                                             //let val = self.pop();
                                             //unsafe { println!("{:?}", *val) };
                                         //}
+                                        log::debug!("return!");
                                         return InterpretResult::InterpretOK;
                                     }
                     OpCode::OpNegate => {
                                         unsafe {
                                             let pop = self.pop();
                                             if matches!(*pop, CrValue::CrNumber(_)) {
+                                                log::debug!("negate: {}!",*pop);
                                                 self.push(-(*pop)) ;
                                             } else {
                                                 self.push(*pop);
@@ -201,6 +213,7 @@ impl<const STACK: usize> CrVm<STACK> {
                                         unsafe {
                                             let pop = self.pop();
                                             if matches!(*pop, CrValue::CrBool(_) | CrValue::CrNil) {
+                                                log::debug!("invert: {}!",*pop);
                                                 self.push(!(*pop)) ;
                                             } else {
                                                 self.push(*pop);
@@ -226,7 +239,10 @@ impl<const STACK: usize> CrVm<STACK> {
                                                 log::debug!("comparing {:?} == {:?}", *a, *b);
                                                 self.push(CrValue::CrBool(*a == *b));
                                             } else {
-                                                log::error!("attempt to compare non-matched types");
+                                                log::error!(
+                                                    "attempt to compare non-matched types: {:?} and {:?}",
+                                                    *a, *b
+                                                );
                                                 self.push(*b);
                                                 self.push(*a);
                                                 self.dump_stack();
@@ -262,12 +278,14 @@ impl<const STACK: usize> CrVm<STACK> {
                         let identobj = bsrc.fetch_const(*idx).to_string();
                         unsafe { 
                             let v = *self.pop();
+                            log::debug!("glob defined: {identobj} => {v}");
                             self.global.insert(identobj, Rc::new(Cell::new(v))); 
                         }
                     },
                     OpCode::OpGetGlob(g) => {
                         match self.global.get(g) {
                             Some(v) => {
+                                log::debug!("glob fetched: {g}");
                                 self.push(v.clone().get());
                             },
                             None    => {
@@ -282,6 +300,7 @@ impl<const STACK: usize> CrVm<STACK> {
                         match self.global.entry(s.clone()) {
                             std::collections::hash_map::Entry::Occupied(o) => {
                                 unsafe {
+                                    log::debug!("glob set: {s} => {}", *nv);
                                     o.get().set(*nv);
                                 }
                             },
@@ -293,14 +312,16 @@ impl<const STACK: usize> CrVm<STACK> {
                         }
                     },
                     OpCode::OpGetLoc(s, n) => {
-                        log::debug!("getting local `{s}` at stack pos: {}", *n);
-                        self.push(self.vstack[*n].get());
+                        let b = self.vstack[*n].get();
+                        log::debug!("getting local `{s}` at stack pos: {} is {b}", *n);
+                        self.push(b);
                     },
                     OpCode::OpSetLoc(s, n) => {
-                        log::debug!("setting local `{s}` at stack pos: {}", *n);
                         let v = self.pop();
                         unsafe {
+                            log::debug!("setting local `{s}` at stack pos: {} to {}", *n, *v);
                             self.vstack[*n].set(*v);
+                            self.push(*v);
                         }
                     },
                     // unlike the book i don't pop the condition ??
@@ -309,16 +330,23 @@ impl<const STACK: usize> CrVm<STACK> {
                         unsafe {
                             if let CrValue::CrBool(n) = *self.pop() {
                                 if !n {
+                                    log::debug!("jumping {}", *o);
                                     instrptr.jump(*o);
                                 }
                             } else {
                                 // all other values are falsey!!
+                                log::debug!("jumping {}", *o);
                                 instrptr.jump(*o);
                             }
                         }
                     },
                     OpCode::OpJump(o) => {
+                        log::debug!("raw jumping {}", *o);
                         instrptr.jump(*o);
+                    },
+                    OpCode::OpLoop(loc) => {
+                        log::debug!("to location {}", *loc);
+                        instrptr.location(*loc);
                     },
                 }
                 if self.iserr {

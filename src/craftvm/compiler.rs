@@ -715,6 +715,28 @@ impl<'a> CraftParser<'a> {
         }
     }
 
+    fn while_statement(&mut self) -> ParseRs {
+        //let line = self.previous.borrow().line;
+        //self.chnk.borrow_mut().emit_byte(OpType::Simple(common::OpCode::OpNop), line);
+        let loopstrt = self.chnk.borrow().instrlen();
+        self.consume(CrTokenType::CrLeftParen, "open while condition expected")?;
+        self.expression()?;
+        self.consume(CrTokenType::CrRightParen,"close while condition expected")?;
+        let line = self.previous.borrow().line;
+
+        self.chnk.borrow_mut().emit_byte(OpType::Jumper(common::OpCode::OpJumpIfFalse(0)), line);
+        let offs = self.chnk.borrow().instrlen();
+        self.statement()?;
+        self.chnk.borrow_mut().emit_byte(OpType::Jumper(common::OpCode::OpLoop(loopstrt)), line);
+        let upd = self.chnk.borrow().instrlen();
+
+        self.chnk.borrow_mut().mod_byte(offs-1, |op| {
+            *op = OpType::Jumper(common::OpCode::OpJumpIfFalse(upd-offs));
+        });
+
+        Ok(())
+    }
+
     // If that value is falsey, then we know the entire and must be false, 
     // so we skip the right operand and leave the left-hand side value as the result of the entire expression.
     // Otherwise, we discard the left-hand value and evaluate the right operand which becomes the result of the whole and expression.
@@ -899,6 +921,8 @@ impl<'a> CraftParser<'a> {
            self.print_statement()
         } else if self.mtch(CrTokenType::CrIf) {
             self.if_statement()
+        } else if self.mtch(CrTokenType::CrWhile) {
+            self.while_statement()
         } else if self.mtch(CrTokenType::CrLeftBrace) {
             self.begin_scope();
             let b = self.block();

@@ -71,6 +71,10 @@ impl<'a> CraftChunkIter<'a> {
         self.offset += offset
     }
 
+    pub fn location(&mut self, idx: usize) {
+        self.offset = idx
+    }
+
 }
 
 impl<'a> IntoIterator for &'a CrChunk {
