@@ -126,29 +126,29 @@ impl<const STACK: usize> CrVm<STACK> {
 
     // make sure to restore locally popped values
     pub fn dump_stack(&self) {
-        println!("========== stack =============");
+        println!("============= stack ================");
         let mut pos = self.stkidx;
         while pos > 0 {
             println!("\t {pos} ==> {:?}", self.vstack[pos]);
             pos-=1;
         }
         println!("\t{pos} ==> {:?}", self.vstack[pos]);
-        println!("========== stack =============");
+        println!("============= stack ================");
     }
 
     pub fn dump_globals(&self) {
-        println!("========== globals =============");
+        println!("============= globals ================");
         self.global.iter().for_each(|(k, v)| {
             println!("\t{k} => {}", v.clone().get())
         });
-        println!("========== globals =============");
+        println!("============= globals ================");
     }
 
     pub fn dump_src(&self) {
-        println!("========== source =============");
+        println!("============= source =============");
         let bsrc   = self.source.borrow();
         debug::disas(&self.source.clone().borrow(), bsrc.into_iter());
-        println!("========== source =============");
+        println!("============= source =============");
     }
 
     pub fn warm(&mut self, chunk: CrChunk) {
@@ -302,6 +302,23 @@ impl<const STACK: usize> CrVm<STACK> {
                         unsafe {
                             self.vstack[*n].set(*v);
                         }
+                    },
+                    // unlike the book i don't pop the condition ??
+                    // not sure the effect :-D
+                    OpCode::OpJumpIfFalse(o) => {
+                        unsafe {
+                            if let CrValue::CrBool(n) = *self.pop() {
+                                if !n {
+                                    instrptr.jump(*o);
+                                }
+                            } else {
+                                // all other values are falsey!!
+                                instrptr.jump(*o);
+                            }
+                        }
+                    },
+                    OpCode::OpJump(o) => {
+                        instrptr.jump(*o);
                     },
                 }
                 if self.iserr {

@@ -1,4 +1,4 @@
-use std::{fmt::Display};
+use std::{cell::RefCell, fmt::Display};
 
 #[derive(Default, Debug)]
 pub enum OpCode {
@@ -36,6 +36,9 @@ pub enum OpCode {
     // Local Vars
     OpGetLoc(String, usize),
     OpSetLoc(String, usize),
+    // Conds
+    OpJumpIfFalse(usize),
+    OpJump(usize),
 }
 
 impl Display for OpCode {
@@ -51,62 +54,68 @@ impl Display for OpCode {
                 write!(f, "const {num}")
             }
             OpCode::OpNegate => {
-                write!(f, " (-) ")
+                write!(f, "(-)")
             }
             OpCode::OpSub => {
-                write!(f, " [-] ")
+                write!(f, "[-]")
             }
             OpCode::OpAdd => {
-                write!(f, " (+) ")
+                write!(f, "(+)")
             }
             OpCode::OpMult => {
-                write!(f, " (*) ")
+                write!(f, "(*)")
             }
             OpCode::OpDiv => {
-                write!(f, " (/) ")
+                write!(f, "(/)")
             }
             OpCode::OpTrue => {
-                write!(f, " (true) ")
+                write!(f, "true")
             }
             OpCode::OpFalse => {
-                write!(f, " (false) ")
+                write!(f, "false")
             }
             OpCode::OpNil => {
-                write!(f, " nil ")
+                write!(f, "nil")
             }
             OpCode::OpNot => {
-                write!(f, " ! ")
+                write!(f, "!")
             }
             OpCode::OpEqual => {
-                write!(f, " = ")
+                write!(f, "=")
             }
             OpCode::OpGreater => {
-                write!(f, " > ")
+                write!(f, ">")
             }
             OpCode::OpLess => {
-                write!(f, " < ")
+                write!(f, "<")
             }
             OpCode::OpPrint => {
-                write!(f, " @print ")
+                write!(f, "@print")
             }
             OpCode::OpPop => {
-                write!(f, " []pop ")
+                write!(f, "<-pop")
             },
             OpCode::OpDefGlob(x) => {
                 write!(f, " @declrglobal{{idx:{x}}} ")
             }, 
             OpCode::OpGetGlob(x) => {
-                write!(f, " @fetchglobal{{idx:{x}}} ")
+                write!(f, "@fetchglobal{{idx:{x}}}")
             }, 
             OpCode::OpSetGlob(x) => {
-                write!(f, " @setvrglobal{{idx:{x}}} ")
+                write!(f, "@setvrglobal{{idx:{x}}}")
             }, 
             OpCode::OpGetLoc(s, u) => {
-                write!(f, " @getvrlocal{{{s}:idx:{u}}} ")
+                write!(f, "@getvrlocal{{{s}:idx:{u}}}")
             },
             OpCode::OpSetLoc(s, u) => {
-                write!(f, " @setvrlocal{{{s}:idx:{u}}} ")
-            }
+                write!(f, "@setvrlocal{{{s}:idx:{u}}}")
+            }, 
+            OpCode::OpJumpIfFalse(offset) => {
+                write!(f, "@jump-if-false({})", offset)
+            },
+            OpCode::OpJump(offset) => {
+                write!(f, "@jump({})", offset)
+            },
         }
     }
 }
@@ -114,6 +123,7 @@ impl Display for OpCode {
 #[derive(Debug)]
 pub enum OpType {
     Simple(OpCode),
+    Jumper(OpCode),
 }
 
 impl Default for OpType {

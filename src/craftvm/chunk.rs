@@ -1,3 +1,5 @@
+use chrono::offset;
+
 use super::common::{OpCode, OpType};
 use super::value::{ConstPool, CrValue};
 
@@ -17,6 +19,14 @@ impl CrChunk {
             lines: vec![],
             cnsts: ConstPool::new(),
         }
+    }
+
+    pub fn instrlen(&self) -> usize {
+       self.instr.len()
+    }
+
+    pub fn mod_byte(&mut self, idx: usize, f: impl FnOnce(&mut OpType)) {
+        f(&mut self.instr[idx])
     }
 
     pub fn emit_byte(&mut self, op: OpType, lineno: usize) {
@@ -55,6 +65,14 @@ pub struct CraftChunkIter<'a> {
     pub offset: usize,
 }
 
+impl<'a> CraftChunkIter<'a> {
+
+    pub fn jump(&mut self, offset: usize) {
+        self.offset += offset
+    }
+
+}
+
 impl<'a> IntoIterator for &'a CrChunk {
     type Item = Offset<'a>;
     type IntoIter = CraftChunkIter<'a>;
@@ -76,6 +94,10 @@ impl<'a> Iterator for CraftChunkIter<'a> {
             let i = self.offset;
             match self.source.instr[self.offset] {
                 OpType::Simple(ref op) => {
+                    self.offset += 1;
+                    Some((i, self.source.lines[i], op))
+                },
+                OpType::Jumper(ref op) => {
                     self.offset += 1;
                     Some((i, self.source.lines[i], op))
                 },

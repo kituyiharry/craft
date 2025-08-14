@@ -5,7 +5,7 @@ use crate::craftvm::{common::OpType, value::{CrObjVal, CrValue}};
 use ocaml::Seq;
 use once_cell::unsync::Lazy;
 use std::{
-    array, cell::{RefCell, UnsafeCell}, fmt::Debug
+    array, cell::{Cell, RefCell, UnsafeCell}, fmt::Debug
 };
 
 pub type TokSeqItem<'a> = (CrTokenType<'a>, usize, usize);
@@ -706,7 +706,10 @@ impl<'a> CraftParser<'a> {
                 Ok(())
             }
             None => {
-                log::error!("the prefix rule was empty");
+                log::error!("the prefix rule was empty, prev: {:?}, cur: {:?}", 
+                    self.previous.borrow().token,
+                    self.current.borrow().token
+                );
                 Ok(())
             }
         }
@@ -790,10 +793,63 @@ impl<'a> CraftParser<'a> {
         }
     }
 
+    // we use a classic trick called backpatching. We emit the jump instruction first with a placeholder offset operand. We keep track of where that half-finished instruction is. Next, we compile the then body. Once that’s done, we know how far to jump. So we go back and replace that placeholder offset with the real one now that we can calculate it. Sort of like sewing a patch onto the existing fabric of the compiled code.
+    fn if_statement(&mut self) -> ParseRs {
+        let ln = self.previous.borrow().line;
+        self.consume(CrTokenType::CrLeftParen, "expected if expr in parens")?;
+        self.expression()?;
+        self.consume(CrTokenType::CrRightParen, "expected closing paren")?;
+
+        let curoff = self.chnk.borrow().instrlen();
+        let offset = 0usize;
+
+        self.chnk.borrow_mut().emit_byte(
+            OpType::Jumper(common::OpCode::OpJumpIfFalse(offset)), 
+            ln
+        );
+        // capture position
+        let idx = self.chnk.borrow().instrlen() - 1;
+
+        self.statement()?;
+
+        let updoff = self.chnk.borrow().instrlen();
+        let offptr = updoff - curoff;
+
+        self.chnk.borrow_mut().mod_byte(idx, |op| {
+            *op = OpType::Jumper(common::OpCode::OpJumpIfFalse(offptr));
+        });
+
+        let elsoff = 0usize;
+        self.chnk.borrow_mut().emit_byte(
+            OpType::Jumper(common::OpCode::OpJump(elsoff)), 
+            ln
+        );
+        
+        // TODO: handle else statement
+        if self.mtch(CrTokenType::CrElse) {
+            let elsoff = self.chnk.borrow().instrlen();
+            let idx2 = elsoff - 1;
+            self.statement()?;
+            let updoff = self.chnk.borrow().instrlen();
+            let elsptr = updoff - elsoff;
+            self.chnk.borrow_mut().mod_byte(idx2, |op| {
+                *op = OpType::Jumper(common::OpCode::OpJump(elsptr));
+            });
+        }
+
+        // Cell doesn't impl Drop so no need to std::mem::forget ???
+        // std::mem::forget(offset);
+        // std::mem::forget(elsoff);
+
+        Ok(())
+    }
+
     fn statement(&mut self) -> ParseRs {
         log::debug!("accepted statement!");
         if self.mtch(CrTokenType::CrPrint) || self.mtch(CrTokenType::CrPrintln) {
            self.print_statement()
+        } else if self.mtch(CrTokenType::CrIf) {
+            self.if_statement()
         } else if self.mtch(CrTokenType::CrLeftBrace) {
             self.begin_scope();
             let b = self.block();

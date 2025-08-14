@@ -17,10 +17,10 @@ pub fn disas_instr<'a>(ch: &'a CrChunk, idx: usize, line: usize, ele: &'a OpCode
     match ele {
         OpCode::OpCnst(cidx) => {
             let v = ch.fetch_const(*cidx);
-            println!("{idx:04} {line:03} {ele:?}  '{v:?}'");
+            println!("  {idx:04}  | {line:03} | {ele} '{v}'");
         }
         _ => {
-            println!("{idx:04}  |  {ele:?}");
+            println!("  {idx:04}  | {line:03} | {ele}");
         }
     }
 }
