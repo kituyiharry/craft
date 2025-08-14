@@ -54,7 +54,7 @@ impl Display for OpCode {
                 write!(f, "const {num}")
             }
             OpCode::OpNegate => {
-                write!(f, "(-)")
+                write!(f, "neg(-)")
             }
             OpCode::OpSub => {
                 write!(f, "[-]")
@@ -96,7 +96,7 @@ impl Display for OpCode {
                 write!(f, "<-pop")
             },
             OpCode::OpDefGlob(x) => {
-                write!(f, " @declrglobal{{idx:{x}}} ")
+                write!(f, "@declrglobal{{idx:{x}}} ")
             }, 
             OpCode::OpGetGlob(x) => {
                 write!(f, "@fetchglobal{{idx:{x}}}")
@@ -111,10 +111,10 @@ impl Display for OpCode {
                 write!(f, "@setvrlocal{{{s}:idx:{u}}}")
             }, 
             OpCode::OpJumpIfFalse(offset) => {
-                write!(f, "@jump-if-false({})", offset)
+                write!(f, "@jump-if-false({offset})")
             },
             OpCode::OpJump(offset) => {
-                write!(f, "@jump({})", offset)
+                write!(f, "@jump({offset})")
             },
         }
     }

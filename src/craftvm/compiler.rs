@@ -5,7 +5,7 @@ use crate::craftvm::{common::OpType, value::{CrObjVal, CrValue}};
 use ocaml::Seq;
 use once_cell::unsync::Lazy;
 use std::{
-    array, cell::{Cell, RefCell, UnsafeCell}, fmt::Debug
+    array, cell::{RefCell, UnsafeCell}, fmt::Debug
 };
 
 pub type TokSeqItem<'a> = (CrTokenType<'a>, usize, usize);
@@ -279,8 +279,8 @@ static mut PARSERULES: Lazy<[UnsafeCell<CraftParseRule>; 42]> = Lazy::new(|| {
         // CrTokenType::CrAnd => 22,
         UnsafeCell::new(CraftParseRule {
             prefix: None,
-            infix: None,
-            precdc: Precedence::PrecNone,
+            infix:  Some(Box::new(|s, b| CraftParser::and_(s, b))),
+            precdc: Precedence::PrecAnd,
         }),
         // CrTokenType::CrClass => 23,
         UnsafeCell::new(CraftParseRule {
@@ -327,8 +327,8 @@ static mut PARSERULES: Lazy<[UnsafeCell<CraftParseRule>; 42]> = Lazy::new(|| {
         // CrTokenType::CrOr => 30,
         UnsafeCell::new(CraftParseRule {
             prefix: None,
-            infix: None,
-            precdc: Precedence::PrecNone,
+            infix:  Some(Box::new(|s, b| CraftParser::or_(s, b))),
+            precdc: Precedence::PrecOr,
         }),
         // CrTokenType::CrPrint => 31,
         UnsafeCell::new(CraftParseRule {
@@ -713,6 +713,55 @@ impl<'a> CraftParser<'a> {
                 Ok(())
             }
         }
+    }
+
+    // If that value is falsey, then we know the entire and must be false, 
+    // so we skip the right operand and leave the left-hand side value as the result of the entire expression.
+    // Otherwise, we discard the left-hand value and evaluate the right operand which becomes the result of the whole and expression.
+    fn and_(&mut self, _assgnprec: bool) -> ParseRs {
+        let ln = self.previous.borrow().line;
+        self.chnk.borrow_mut().emit_byte(
+            OpType::Simple(common::OpCode::OpJumpIfFalse(0)), ln
+        );
+
+        let off = self.chnk.borrow().instrlen();
+        self.parse_precedence(&Precedence::PrecAnd)?;
+        let upd = self.chnk.borrow().instrlen();
+
+        self.chnk.borrow_mut().mod_byte(off-1, |op|{
+            *op = OpType::Simple(common::OpCode::OpJumpIfFalse(upd-off))
+        });
+
+        Ok(())
+    }
+
+    // if the left-hand side is truthy, then we skip over the right operand. 
+    // Thus we need to jump when a value is truthy. We could add a separate instruction, 
+    // but just to show how our compiler is free to map the language’s semantics to whatever 
+    // instruction sequence it wants, I implemented it in terms of the jump instructions we already have.
+    //
+    // If I’m honest with you, this isn’t the best way to do this. There are more instructions to dispatch and more overhead.
+    fn or_(&mut self, _assgnprec: bool) -> ParseRs {
+        let ln = self.previous.borrow().line;
+        // infix check if top of stack is false, in order to skip the next jump instruction
+        self.chnk.borrow_mut().emit_byte(
+            OpType::Simple(common::OpCode::OpJumpIfFalse(1)), ln
+        );
+        self.chnk.borrow_mut().emit_byte(
+            OpType::Simple(common::OpCode::OpJump(0)), ln
+        );
+
+        let jmp = self.chnk.borrow().instrlen();
+        self.parse_precedence(&Precedence::PrecOr)?;
+        let upd = self.chnk.borrow().instrlen();
+
+        // modify jump to skip all remaining if the previous stack value was true
+        // achieving short circuit
+        self.chnk.borrow_mut().mod_byte(jmp-1, |op|{
+            *op = OpType::Simple(common::OpCode::OpJump(upd-jmp))
+        });
+
+        Ok(())
     }
 
     fn grouping(&mut self, _assgnprec: bool) -> ParseRs {

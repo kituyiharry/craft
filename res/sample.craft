@@ -162,6 +162,6 @@ var a = "global";
   showA();
 }
 var monday = true
-if (monday) var croissant = "yes";
+if (monday && true) var croissant = "yes";
 
 print croissant;
