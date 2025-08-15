@@ -5,7 +5,7 @@ use crate::craftvm::{common::OpType, value::{CrObjVal, CrValue}};
 use ocaml::Seq;
 use once_cell::unsync::Lazy;
 use std::{
-    array, cell::{RefCell, UnsafeCell}, fmt::Debug
+    array, cell::{RefCell, UnsafeCell}, fmt::Debug, isize
 };
 
 pub type TokSeqItem<'a> = (CrTokenType<'a>, usize, usize);
@@ -715,6 +715,98 @@ impl<'a> CraftParser<'a> {
         }
     }
 
+    // should also be able to work for infinite loops ?? for(;;) { ... }
+    fn for_statement(&mut self) -> ParseRs {
+
+        // id of jump instruction
+        let mut jidx: isize = -1;
+        self.begin_scope();
+        {
+
+            self.consume(CrTokenType::CrLeftParen, "for loop start paren")?;
+            // initializer - should also match closing semi colons
+            {
+                if self.mtch(CrTokenType::CrSemicolon) {
+                    // no initializer
+                } else if self.mtch(CrTokenType::CrVar) {
+                    self.var_declaration()?;
+                } else {
+                    self.expr_statement()?;
+                }
+            }
+
+            let loopline = self.previous.borrow().line;
+            let mut loopstrt = self.chnk.borrow().instrlen();
+
+            // condition
+            {
+                //self.consume(CrTokenType::CrSemicolon, "condition end colon")?;
+                if !self.mtch(CrTokenType::CrSemicolon) {
+                    // doesn't match the semicolon closing
+                    self.expression()?;
+                    self.consume(CrTokenType::CrSemicolon, "condition close semicolon")?;
+
+                    self.chnk.borrow_mut().emit_byte(OpType::Jumper(
+                        common::OpCode::OpJumpIfFalse(0)
+                    ), self.previous.borrow().line);
+                    jidx = (self.chnk.borrow().instrlen()) as isize;
+                }
+            }
+
+            // increment
+            // NB: It appears textually before the body, but executes after it
+            {
+                //  we’ll jump over the increment, run the body, 
+                //  jump back up to the increment, run it, 
+                //  and then go to the next iteration
+                if !self.mtch(CrTokenType::CrRightParen) {
+
+                    self.chnk.borrow_mut().emit_byte(
+                        OpType::Jumper(common::OpCode::OpJump(1)),
+                        self.previous.borrow().line
+                    );
+
+                    let incid = self.chnk.borrow().instrlen();
+
+                    self.expression()?;
+
+
+                    self.chnk.borrow_mut().emit_byte(
+                        OpType::Jumper(common::OpCode::OpLoop(loopstrt)), 
+                        loopline
+                    );
+
+                    let upinc = self.chnk.borrow().instrlen();
+
+                    self.chnk.borrow_mut().mod_byte(incid - 1, |op| {
+                        *op = OpType::Jumper(common::OpCode::OpJump(upinc - incid));
+                    });
+                    // change to loop to the beginning of the increment
+                    loopstrt = incid;
+
+                    self.consume(CrTokenType::CrRightParen, "increment closer")?;
+                }
+            }
+
+
+            self.statement()?;
+
+            // this loop jumps to the increment expression first, 
+            self.chnk.borrow_mut().emit_byte(OpType::Jumper(common::OpCode::OpLoop(loopstrt)), loopline);
+
+            let n = self.chnk.borrow_mut().instrlen();
+
+            if jidx > -1 {
+                self.chnk.borrow_mut().mod_byte((jidx-1) as usize, |op| {
+                    *op = OpType::Jumper(common::OpCode::OpJumpIfFalse(n - (jidx as usize)))
+                });
+            }
+        }
+
+        self.end_scope();
+        Ok(())
+    }
+
     fn while_statement(&mut self) -> ParseRs {
         //let line = self.previous.borrow().line;
         //self.chnk.borrow_mut().emit_byte(OpType::Simple(common::OpCode::OpNop), line);
@@ -923,6 +1015,8 @@ impl<'a> CraftParser<'a> {
             self.if_statement()
         } else if self.mtch(CrTokenType::CrWhile) {
             self.while_statement()
+        } else if self.mtch(CrTokenType::CrFor) {
+            self.for_statement()
         } else if self.mtch(CrTokenType::CrLeftBrace) {
             self.begin_scope();
             let b = self.block();
@@ -1004,7 +1098,7 @@ impl<'a> CraftParser<'a> {
         loci.locals[(loci.lcount - 1) as usize].borrow_mut().depth = loci.scope_depth as isize;
     }
 
-    fn var_decl(&mut self) -> ParseRs {
+    fn var_declaration(&mut self) -> ParseRs {
         let global = self.parse_var("Expect var decl")?;
 
         let line   = self.previous.borrow().line;
@@ -1036,7 +1130,7 @@ impl<'a> CraftParser<'a> {
     fn declaration(&mut self) -> ParseRs {
         log::debug!("accepted declaration!");
         if self.mtch(CrTokenType::CrVar) {
-            let _ = self.var_decl();
+            let _ = self.var_declaration();
             if self.state.borrow().panic_md {
                 self.synchronize();
             }

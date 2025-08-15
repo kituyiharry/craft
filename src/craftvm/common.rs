@@ -53,7 +53,7 @@ impl Display for OpCode {
                 write!(f, "return")
             }
             OpCode::OpCnst(num) => {
-                write!(f, "const {num}")
+                write!(f, "loadcnst idx:{num}")
             }
             OpCode::OpNegate => {
                 write!(f, "neg(-)")
