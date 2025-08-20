@@ -4,6 +4,7 @@ use chrono::Utc;
 use craftvm::{
     chunk::CrChunk,
     common::{OpCode, OpType},
+    value::CrFunc,
     //compiler,
     vm::CrVm,
 };
@@ -11,7 +12,7 @@ use env_logger::Env;
 
 use crate::craftvm::value::{CrObjVal, CrValue};
 
-const STACKMAX: usize = 256;
+const STACKMAX: usize = 256 * 8;
 
 fn main() {
 
@@ -37,7 +38,9 @@ fn main() {
     ch.emit_byte(OpType::Simple(OpCode::OpAdd), 1);
     ch.emit_byte(OpType::Simple(OpCode::OpReturn), 2);
 
+    let fnc = CrFunc { chunk: ch, ..CrFunc::default() };
+
     let mut cvm = CrVm::<STACKMAX>::new();
-    cvm.warm(ch);
+    cvm.warm(fnc);
     cvm.run();
 }

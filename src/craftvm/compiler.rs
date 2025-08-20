@@ -1,11 +1,11 @@
 #![allow(static_mut_refs)]
 
-use super::{chunk::CrChunk, common, scanner::CrTokenType};
-use crate::craftvm::{common::OpType, value::{CrObjVal, CrValue}};
+use super::{common, scanner::CrTokenType};
+use crate::craftvm::{common::OpType, value::{CrFunc, CrObjVal, CrValue}};
 use ocaml::Seq;
 use once_cell::unsync::Lazy;
 use std::{
-    array, cell::{RefCell, UnsafeCell}, fmt::Debug, isize
+    array, cell::{RefCell, UnsafeCell}, fmt::Debug
 };
 
 pub type TokSeqItem<'a> = (CrTokenType<'a>, usize, usize);
@@ -16,7 +16,7 @@ pub struct ParseState {
     pub panic_md: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TokenData<'a> {
     pub line: usize,
     pub col: usize,
@@ -36,10 +36,11 @@ impl Default for TokenData<'_> {
 // NB: if previous is EoF, then current
 pub struct CraftParser<'a> {
     tokseq:     Seq<(CrTokenType<'a>, usize, usize)>,
+    tokcount:   usize,
     current:    RefCell<TokenData<'a>>,
     previous:   RefCell<TokenData<'a>>,
     pub state:  RefCell<ParseState>,
-    pub chnk:   RefCell<CrChunk>,
+    pub chnk:   RefCell<CrFunc>,  // Root is main
     pub locs:   RefCell<CraftLocState<'a>>,
 }
 
@@ -96,6 +97,12 @@ impl Precedence {
 type ParseRs = Result<(), String>;
 type ParseFn = Box<dyn (FnMut(&mut CraftParser<'_>, bool) -> ParseRs) + Send + Sync>;
 
+// distinction between top-level(script) and funcs
+pub enum FuncType {
+    FScript, 
+    FFunc,
+}
+
 pub struct CraftParseRule {
     pub prefix: Option<ParseFn>,
     pub infix:  Option<ParseFn>,
@@ -120,6 +127,11 @@ pub struct CraftLocState<'a> {
     pub locals: [RefCell<CraftLocal<'a>>; MAX_LOCAL_COUNT as usize],
     pub lcount: isize, 
     pub scope_depth: usize,
+    // When the compiler reaches a function declaration,
+    // it needs to emit code into the function’s chunk when compiling its body. 
+    // At the end of the function body, the compiler needs to return to the previous chunk it was working with
+    pub funcs: Vec<CrFunc>,
+    pub ftype: FuncType,
 }
 
 impl<'a> Default for CraftLocState<'a>  {
@@ -130,6 +142,17 @@ impl<'a> Default for CraftLocState<'a>  {
             }), 
             lcount:      0, 
             scope_depth: 0, 
+            funcs:       vec![],
+            ftype:       FuncType::FScript,
+        }
+    }
+}
+
+impl<'a> CraftLocState<'a> {
+    pub fn level(t: FuncType) -> Self {
+        Self { 
+            ftype: t,
+            ..Default::default()
         }
     }
 }
@@ -409,15 +432,29 @@ impl Debug for CraftParser<'_> {
     }
 }
 
+const MIN_LOC_IDX: isize = 0isize;
+
 impl<'a> CraftParser<'a> {
-    pub fn new(tokseq: Seq<(CrTokenType<'a>, usize, usize)>, chnk: RefCell<CrChunk>) -> Self {
+    // So the compiler creates function objects during compilation. Then, at runtime, they are simply invoked
+    // The more fundamental problem, though, is recursion. 
+    // With recursion, you can be “in” multiple calls to the same function at the same time. Each needs its own memory for its local variables.
+    pub fn new(tokseq: Seq<(CrTokenType<'a>, usize, usize)>, chnk: RefCell<CrFunc>, lvl: FuncType) -> Self {
+
+        // the compiler implicitly claims stack slot zero for the VM’s own internal use
+        // and variable accounting
+        let mut l = CraftLocState { lcount: MIN_LOC_IDX, ..CraftLocState::level(lvl) };
+        l.locals[0].borrow_mut().depth = 0;
+        l.locals[0].borrow_mut().name  = CrTokenType::CrNonpert; 
+        l.lcount += 1;
+
         Self {
             tokseq,
             chnk,
+            tokcount: 0,
             current:  RefCell::new(TokenData::default()),
             previous: RefCell::new(TokenData::default()),
             state:    RefCell::new(ParseState::default()),
-            locs:   RefCell::new(CraftLocState::default()),
+            locs:     RefCell::new(l),
         }
     }
 
@@ -428,7 +465,7 @@ impl<'a> CraftParser<'a> {
             // no need to check for max int sinze we use usize for the indexes
             CrTokenType::CrNumber(ref value) => {
                 log::debug!("was number {value}");
-                self.chnk.borrow_mut().add_const(CrValue::CrNumber(*value), tok.line);
+                self.chnk.borrow_mut().chunk.add_const(CrValue::CrNumber(*value), tok.line);
                 Ok(())
             }
             t => {
@@ -459,7 +496,7 @@ impl<'a> CraftParser<'a> {
                 self.current.borrow().token
             );
         }
-        let mut ch = self.chnk.borrow_mut();
+        let ch = &mut (self.chnk.borrow_mut().chunk);
         log::debug!("pushing op {tok:?}");
         match tok {
             CrTokenType::CrPlus => {
@@ -516,11 +553,11 @@ impl<'a> CraftParser<'a> {
     fn resolve_local(&self, name: &CrTokenType) -> isize {
         let loci = self.locs.borrow();
         let tot = loci.lcount;
-        for i in (0..=tot).rev() {
+        for i in (MIN_LOC_IDX..=tot).rev() {
             let l = loci.locals[i as usize].borrow();
             log::debug!("local: {i} is {l:?}");
         }
-        for i in (0..=tot).rev() {
+        for i in (MIN_LOC_IDX..=tot).rev() {
             log::debug!("checking at local: {i} of {tot}");
             let l = loci.locals[i as usize].borrow();
             if l.name.eq(name) {
@@ -560,7 +597,7 @@ impl<'a> CraftParser<'a> {
                 if _assgnprec && self.mtch(CrTokenType::CrEqual) {
                     log::debug!("accepted named_var with lower precedence to or= assignment");
                     let _ = self.expression();
-                    let mut ch = self.chnk.borrow_mut();
+                    let ch = &mut (self.chnk.borrow_mut().chunk);
                     if argl != -1 {
                         ch.emit_byte(OpType::Simple(common::OpCode::OpSetLoc(s.into(), argl as usize)), line);
                     } else {
@@ -568,7 +605,7 @@ impl<'a> CraftParser<'a> {
                     }
                 } else {
                     log::debug!("not a named_var assignment");
-                    let mut ch = self.chnk.borrow_mut();
+                    let ch = &mut (self.chnk.borrow_mut().chunk);
                     if argl  != -1 {
                         ch.emit_byte(OpType::Simple(common::OpCode::OpGetLoc(s.into(), argl as usize)), line);
                     } else {
@@ -592,7 +629,7 @@ impl<'a> CraftParser<'a> {
     fn string(&mut self, _assgnprec: bool) -> ParseRs {
         log::debug!("accepted string expr!");
         let prev = self.previous.borrow();
-        let mut ch = self.chnk.borrow_mut();
+        let ch = &mut (self.chnk.borrow_mut().chunk);
         match &prev.token {
             CrTokenType::CrString(s) => { 
                 ch.add_const(
@@ -611,7 +648,7 @@ impl<'a> CraftParser<'a> {
     fn literal(&mut self, _assgnprec: bool) -> ParseRs {
         log::debug!("accepted literal expr!");
         let prev = self.previous.borrow();
-        let mut ch = self.chnk.borrow_mut();
+        let ch = &mut self.chnk.borrow_mut().chunk;
         match &prev.token {
             CrTokenType::CrFalse => ch.emit_byte(OpType::Simple(common::OpCode::OpFalse), prev.line),
             CrTokenType::CrTrue  => ch.emit_byte(OpType::Simple(common::OpCode::OpTrue),  prev.line),
@@ -626,7 +663,7 @@ impl<'a> CraftParser<'a> {
         let prevt = self.previous.borrow().token.clone();
         let line  = self.previous.borrow().line;
         self.parse_precedence(&Precedence::PrecUnary)?;
-        let mut ch = self.chnk.borrow_mut();
+        let ch = &mut self.chnk.borrow_mut().chunk;
         match prevt {
             // we emit the bytecode to perform the negation.
             // It might seem a little weird to write the negate instruction after
@@ -736,7 +773,7 @@ impl<'a> CraftParser<'a> {
             }
 
             let loopline = self.previous.borrow().line;
-            let mut loopstrt = self.chnk.borrow().instrlen();
+            let mut loopstrt = self.chnk.borrow().chunk.instrlen();
 
             // condition
             {
@@ -746,10 +783,10 @@ impl<'a> CraftParser<'a> {
                     self.expression()?;
                     self.consume(CrTokenType::CrSemicolon, "condition close semicolon")?;
 
-                    self.chnk.borrow_mut().emit_byte(OpType::Jumper(
+                    self.chnk.borrow_mut().chunk.emit_byte(OpType::Jumper(
                         common::OpCode::OpJumpIfFalse(0)
                     ), self.previous.borrow().line);
-                    jidx = (self.chnk.borrow().instrlen()) as isize;
+                    jidx = (self.chnk.borrow().chunk.instrlen()) as isize;
                 }
             }
 
@@ -761,24 +798,24 @@ impl<'a> CraftParser<'a> {
                 //  and then go to the next iteration
                 if !self.mtch(CrTokenType::CrRightParen) {
 
-                    self.chnk.borrow_mut().emit_byte(
+                    self.chnk.borrow_mut().chunk.emit_byte(
                         OpType::Jumper(common::OpCode::OpJump(1)),
                         self.previous.borrow().line
                     );
 
-                    let incid = self.chnk.borrow().instrlen();
+                    let incid = self.chnk.borrow().chunk.instrlen();
 
                     self.expression()?;
 
 
-                    self.chnk.borrow_mut().emit_byte(
+                    self.chnk.borrow_mut().chunk.emit_byte(
                         OpType::Jumper(common::OpCode::OpLoop(loopstrt)), 
                         loopline
                     );
 
-                    let upinc = self.chnk.borrow().instrlen();
+                    let upinc = self.chnk.borrow().chunk.instrlen();
 
-                    self.chnk.borrow_mut().mod_byte(incid - 1, |op| {
+                    self.chnk.borrow_mut().chunk.mod_byte(incid - 1, |op| {
                         *op = OpType::Jumper(common::OpCode::OpJump(upinc - incid));
                     });
                     // change to loop to the beginning of the increment
@@ -792,12 +829,12 @@ impl<'a> CraftParser<'a> {
             self.statement()?;
 
             // this loop jumps to the increment expression first, 
-            self.chnk.borrow_mut().emit_byte(OpType::Jumper(common::OpCode::OpLoop(loopstrt)), loopline);
+            self.chnk.borrow_mut().chunk.emit_byte(OpType::Jumper(common::OpCode::OpLoop(loopstrt)), loopline);
 
-            let n = self.chnk.borrow_mut().instrlen();
+            let n = self.chnk.borrow_mut().chunk.instrlen();
 
             if jidx > -1 {
-                self.chnk.borrow_mut().mod_byte((jidx-1) as usize, |op| {
+                self.chnk.borrow_mut().chunk.mod_byte((jidx-1) as usize, |op| {
                     *op = OpType::Jumper(common::OpCode::OpJumpIfFalse(n - (jidx as usize)))
                 });
             }
@@ -810,19 +847,19 @@ impl<'a> CraftParser<'a> {
     fn while_statement(&mut self) -> ParseRs {
         //let line = self.previous.borrow().line;
         //self.chnk.borrow_mut().emit_byte(OpType::Simple(common::OpCode::OpNop), line);
-        let loopstrt = self.chnk.borrow().instrlen();
+        let loopstrt = self.chnk.borrow().chunk.instrlen();
         self.consume(CrTokenType::CrLeftParen, "open while condition expected")?;
         self.expression()?;
         self.consume(CrTokenType::CrRightParen,"close while condition expected")?;
         let line = self.previous.borrow().line;
 
-        self.chnk.borrow_mut().emit_byte(OpType::Jumper(common::OpCode::OpJumpIfFalse(0)), line);
-        let offs = self.chnk.borrow().instrlen();
+        self.chnk.borrow_mut().chunk.emit_byte(OpType::Jumper(common::OpCode::OpJumpIfFalse(0)), line);
+        let offs = self.chnk.borrow().chunk.instrlen();
         self.statement()?;
-        self.chnk.borrow_mut().emit_byte(OpType::Jumper(common::OpCode::OpLoop(loopstrt)), line);
-        let upd = self.chnk.borrow().instrlen();
+        self.chnk.borrow_mut().chunk.emit_byte(OpType::Jumper(common::OpCode::OpLoop(loopstrt)), line);
+        let upd = self.chnk.borrow().chunk.instrlen();
 
-        self.chnk.borrow_mut().mod_byte(offs-1, |op| {
+        self.chnk.borrow_mut().chunk.mod_byte(offs-1, |op| {
             *op = OpType::Jumper(common::OpCode::OpJumpIfFalse(upd-offs));
         });
 
@@ -834,15 +871,15 @@ impl<'a> CraftParser<'a> {
     // Otherwise, we discard the left-hand value and evaluate the right operand which becomes the result of the whole and expression.
     fn and_(&mut self, _assgnprec: bool) -> ParseRs {
         let ln = self.previous.borrow().line;
-        self.chnk.borrow_mut().emit_byte(
+        self.chnk.borrow_mut().chunk.emit_byte(
             OpType::Simple(common::OpCode::OpJumpIfFalse(0)), ln
         );
 
-        let off = self.chnk.borrow().instrlen();
+        let off = self.chnk.borrow().chunk.instrlen();
         self.parse_precedence(&Precedence::PrecAnd)?;
-        let upd = self.chnk.borrow().instrlen();
+        let upd = self.chnk.borrow().chunk.instrlen();
 
-        self.chnk.borrow_mut().mod_byte(off-1, |op|{
+        self.chnk.borrow_mut().chunk.mod_byte(off-1, |op|{
             *op = OpType::Simple(common::OpCode::OpJumpIfFalse(upd-off))
         });
 
@@ -858,20 +895,20 @@ impl<'a> CraftParser<'a> {
     fn or_(&mut self, _assgnprec: bool) -> ParseRs {
         let ln = self.previous.borrow().line;
         // infix check if top of stack is false, in order to skip the next jump instruction
-        self.chnk.borrow_mut().emit_byte(
+        self.chnk.borrow_mut().chunk.emit_byte(
             OpType::Simple(common::OpCode::OpJumpIfFalse(1)), ln
         );
-        self.chnk.borrow_mut().emit_byte(
+        self.chnk.borrow_mut().chunk.emit_byte(
             OpType::Simple(common::OpCode::OpJump(0)), ln
         );
 
-        let jmp = self.chnk.borrow().instrlen();
+        let jmp = self.chnk.borrow().chunk.instrlen();
         self.parse_precedence(&Precedence::PrecOr)?;
-        let upd = self.chnk.borrow().instrlen();
+        let upd = self.chnk.borrow().chunk.instrlen();
 
         // modify jump to skip all remaining if the previous stack value was true
         // achieving short circuit
-        self.chnk.borrow_mut().mod_byte(jmp-1, |op|{
+        self.chnk.borrow_mut().chunk.mod_byte(jmp-1, |op|{
             *op = OpType::Simple(common::OpCode::OpJump(upd-jmp))
         });
 
@@ -922,7 +959,7 @@ impl<'a> CraftParser<'a> {
         self.expression()?;
         let _ = self.consume_silent(CrTokenType::CrSemicolon, "expected a semicolon");
         let n = self.previous.borrow().line;
-        self.chnk.borrow_mut().emit_byte(OpType::Simple(common::OpCode::OpPrint), n);
+        self.chnk.borrow_mut().chunk.emit_byte(OpType::Simple(common::OpCode::OpPrint), n);
         Ok(())
     }
 
@@ -930,7 +967,7 @@ impl<'a> CraftParser<'a> {
         self.expression()?;
         let _ = self.consume_silent(CrTokenType::CrSemicolon, "Expect ';' after expression.");
         // Semantically, an expression statement evaluates the expression and discards the result. The compiler directly encodes that behavior. It compiles the expression, and then emits an OP_POP instruction
-        self.chnk.borrow_mut().emit_byte(OpType::Simple(common::OpCode::OpPop), self.previous.borrow().line);
+        self.chnk.borrow_mut().chunk.emit_byte(OpType::Simple(common::OpCode::OpPop), self.previous.borrow().line);
         Ok(())
     }
 
@@ -951,7 +988,7 @@ impl<'a> CraftParser<'a> {
         loci.scope_depth -= 1;
         let ln = self.previous.borrow().line;
         while loci.lcount > 0 && (loci.locals[(loci.lcount as usize) - 1].borrow().depth as usize) > (loci.scope_depth)  {
-            ch.emit_byte(OpType::Simple(common::OpCode::OpPop), ln);
+            ch.chunk.emit_byte(OpType::Simple(common::OpCode::OpPop), ln);
             loci.lcount -= 1;
         }
     }
@@ -963,39 +1000,39 @@ impl<'a> CraftParser<'a> {
         self.expression()?;
         self.consume(CrTokenType::CrRightParen, "expected closing paren")?;
 
-        let curoff = self.chnk.borrow().instrlen();
+        let curoff = self.chnk.borrow().chunk.instrlen();
         let offset = 0usize;
 
-        self.chnk.borrow_mut().emit_byte(
+        self.chnk.borrow_mut().chunk.emit_byte(
             OpType::Jumper(common::OpCode::OpJumpIfFalse(offset)), 
             ln
         );
         // capture position
-        let idx = self.chnk.borrow().instrlen() - 1;
+        let idx = self.chnk.borrow().chunk.instrlen() - 1;
 
         self.statement()?;
 
-        let updoff = self.chnk.borrow().instrlen();
+        let updoff = self.chnk.borrow().chunk.instrlen();
         let offptr = updoff - curoff;
 
-        self.chnk.borrow_mut().mod_byte(idx, |op| {
+        self.chnk.borrow_mut().chunk.mod_byte(idx, |op| {
             *op = OpType::Jumper(common::OpCode::OpJumpIfFalse(offptr));
         });
 
         let elsoff = 0usize;
-        self.chnk.borrow_mut().emit_byte(
+        self.chnk.borrow_mut().chunk.emit_byte(
             OpType::Jumper(common::OpCode::OpJump(elsoff)), 
             ln
         );
         
         // TODO: handle else statement
         if self.mtch(CrTokenType::CrElse) {
-            let elsoff = self.chnk.borrow().instrlen();
+            let elsoff = self.chnk.borrow().chunk.instrlen();
             let idx2 = elsoff - 1;
             self.statement()?;
-            let updoff = self.chnk.borrow().instrlen();
+            let updoff = self.chnk.borrow().chunk.instrlen();
             let elsptr = updoff - elsoff;
-            self.chnk.borrow_mut().mod_byte(idx2, |op| {
+            self.chnk.borrow_mut().chunk.mod_byte(idx2, |op| {
                 *op = OpType::Jumper(common::OpCode::OpJump(elsptr));
             });
         }
@@ -1050,7 +1087,7 @@ impl<'a> CraftParser<'a> {
         }
         let lcnt = self.locs.borrow().lcount;
         let tok = self.previous.borrow().token.clone();
-        for i in (0..(lcnt)).rev() {
+        for i in (MIN_LOC_IDX..(lcnt)).rev() {
             let l1 = &self.locs.borrow().locals[i as usize]; 
             let l = l1.borrow();
             log::debug!("check {l:?} for redeclarations");
@@ -1082,7 +1119,7 @@ impl<'a> CraftParser<'a> {
                 // return index of the var in the const pool
                 // we don't add an instruction after like in add_const - check what comes after in
                 // var_decl function
-                Ok(self.chnk.borrow_mut().add_obj(
+                Ok(self.chnk.borrow_mut().chunk.add_obj(
                     ident, 
                     //prev.line
                 ))
@@ -1095,7 +1132,24 @@ impl<'a> CraftParser<'a> {
 
     fn mark_init(&mut self) {
         let loci = self.locs.borrow(); 
+        if loci.scope_depth == 0 {
+            return;
+        }
         loci.locals[(loci.lcount - 1) as usize].borrow_mut().depth = loci.scope_depth as isize;
+    }
+
+    fn define_variable(&mut self, line: usize, cidx: usize) -> ParseRs {
+        // defineVariable
+        if self.locs.borrow().scope_depth > 0 {
+            // markInitialized
+            self.mark_init();
+            return Ok(());
+        }
+        self.chnk.borrow_mut().chunk.emit_byte(
+            OpType::Simple(common::OpCode::OpDefGlob(cidx)), 
+            line
+        );
+        Ok(())
     }
 
     fn var_declaration(&mut self) -> ParseRs {
@@ -1106,29 +1160,71 @@ impl<'a> CraftParser<'a> {
             let _ = self.expression();
         } else {
             let p = self.previous.borrow();
-            let mut chnk = self.chnk.borrow_mut();
+            let chnk = &mut self.chnk.borrow_mut().chunk;
             chnk.emit_byte(
                 OpType::Simple(common::OpCode::OpNil), 
                 p.line
             );
         }
-        let _ = self.consume_silent(CrTokenType::CrSemicolon, "optional closer");
+        let _ = self.consume_silent(CrTokenType::CrSemicolon, "optional closer"); 
+        self.define_variable(line, global)
+    }
 
-        // defineVariable
-        if self.locs.borrow().scope_depth > 0 {
-            // markInitialized
-            self.mark_init();
-            return Ok(());
-        }
-        self.chnk.borrow_mut().emit_byte(
-            OpType::Simple(common::OpCode::OpDefGlob(global)), 
+
+    fn function(&mut self, _ft: FuncType) -> ParseRs {
+        let chunk: RefCell<CrFunc> = RefCell::new(CrFunc::default());  // main function
+        let line = self.previous.borrow().line;
+        
+        // TODO: behaviour of clone here ??
+        log::debug!("created a new parser");
+        let mut parser = CraftParser::new(self.tokseq.clone(), chunk, _ft);
+
+        parser.current  = self.current.borrow().clone().into();
+
+        parser.begin_scope();
+
+        parser.consume(CrTokenType::CrLeftParen,  "opening function parameters")?;
+        parser.consume(CrTokenType::CrRightParen, "close function parameters")?;
+        parser.consume(CrTokenType::CrLeftBrace,  "function body open")?;
+
+        log::debug!("function block parsing start");
+        parser.block()?;
+        log::debug!("function block done, consumed {} tokens", parser.tokcount);
+
+
+        (0..parser.tokcount).for_each(|_| { self.advance(); });
+
+        let fbody = parser.finish();
+        self.chnk.borrow_mut().chunk.add_const(
+            CrValue::CrObj(CrObjVal::from(Box::new(fbody))),
             line
         );
+
+
         Ok(())
+    }
+
+    fn fun_declaration(&mut self) -> ParseRs {
+        log::debug!("accepted function declaration");
+        // write into the const pool
+        let line = self.previous.borrow().line;
+        let fnameidx = self.parse_var("function name expected?")?;
+        //  we mark the function declaration’s variable “initialized” as soon as we compile the name, 
+        //  before we compile the body. That way the name can be referenced inside the body without generating an error
+        //  .. allows recursion
+        self.mark_init();
+        // generates code that leaves the resulting function object on top of the stack. 
+        // After that, we call defineVariable() to store that function back into the variable we declared for it.
+        log::debug!("begin function parsing for func at {fnameidx}");
+        self.function(FuncType::FFunc)?;
+        self.define_variable(line, fnameidx)
     }
 
     fn declaration(&mut self) -> ParseRs {
         log::debug!("accepted declaration!");
+        if self.mtch(CrTokenType::CrFun) {
+            return self.fun_declaration();
+        }
         if self.mtch(CrTokenType::CrVar) {
             let _ = self.var_declaration();
             if self.state.borrow().panic_md {
@@ -1145,6 +1241,7 @@ impl<'a> CraftParser<'a> {
 
     pub fn check(&self, ttype: CrTokenType) -> bool {
         // compare ordering
+        log::debug!("check {:?} == {ttype:?}(expected)", self.current.borrow().token);
         self.current.borrow().token.order().eq(&ttype.order())
     }
 
@@ -1164,6 +1261,7 @@ impl<'a> CraftParser<'a> {
         if let Some(tok) = self.tokseq.next() {
             match tok {
                 Ok((token, line, col)) => {
+                    self.tokcount += 1;
                     log::debug!("advance popped token {token:?}");
                     self.current.replace(TokenData { line, col, token });
                     return true;
@@ -1190,7 +1288,7 @@ impl<'a> CraftParser<'a> {
     }
 
     pub fn consume(&mut self, expected: CrTokenType, message: &'static str) -> ParseRs {
-        log::debug!("consuming a token, expecting {expected:?}!");
+        log::debug!("consuming a token, prev: {:?} and cur {:?}, expecting {expected:?}!", self.previous.borrow().token, self.current.borrow().token);
         if self.current.get_mut().token.order().eq(&expected.order()) {
             self.advance();
             return Ok(());
@@ -1203,7 +1301,15 @@ impl<'a> CraftParser<'a> {
         log::debug!("pushing return operation");
         self.chnk
             .get_mut()
+            .chunk
             .end_compiler(self.current.borrow().line + 1);
+    }
+
+    // return the main function
+    pub fn finish(mut self) -> CrFunc {
+        log::debug!("finishing compilation");
+        self.end();
+        self.chnk.into_inner()
     }
 
     pub fn error_at(&self, tok: &TokenData, message: &'static str) {
@@ -1217,8 +1323,8 @@ impl<'a> CraftParser<'a> {
         }
 
         if log::log_enabled!(log::Level::Debug) {
-            let ch = self.chnk.borrow();
-            super::debug::disas(&ch, ch.into_iter());
+            let ch = &self.chnk.borrow().chunk;
+            super::debug::disas(ch, ch.into_iter());
         }
 
         state.panic_md = true;
@@ -1249,6 +1355,6 @@ pub fn compile(_parser: &'_ mut CraftParser) -> bool {
         log::info!("compiler advancing expression");
     }
     //_parser.consume(CrTokenType::CrEof, "expected End of File").unwrap();
-    _parser.end();
+    //_parser.end();
     !_parser.state.borrow().had_err
 }

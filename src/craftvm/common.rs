@@ -1,6 +1,6 @@
-use std::{cell::RefCell, fmt::Display};
+use std::{fmt::Display, hash::Hash};
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Hash, Clone)]
 pub enum OpCode {
     #[default]
     OpNop,
@@ -98,19 +98,19 @@ impl Display for OpCode {
                 write!(f, "<-pop")
             },
             OpCode::OpDefGlob(x) => {
-                write!(f, "@declrglobal{{name:{x}}} ")
+                write!(f, "@declglob{{name:{x}}}")
             }, 
             OpCode::OpGetGlob(x) => {
-                write!(f, "@fetchglobal{{name:{x}}}")
+                write!(f, "@ftchglob{{name:{x}}}")
             }, 
             OpCode::OpSetGlob(x) => {
-                write!(f, "@setvrglobal{{name:{x}}}")
+                write!(f, "@setglvar{{name:{x}}}")
             }, 
             OpCode::OpGetLoc(s, u) => {
-                write!(f, "@getvrlocal{{{s}:idx:{u}}}")
+                write!(f, "@getlcvar{{{s}:idx:{u}}}")
             },
             OpCode::OpSetLoc(s, u) => {
-                write!(f, "@setvrlocal{{{s}:idx:{u}}}")
+                write!(f, "@setlcvar{{{s}:idx:{u}}}")
             }, 
             OpCode::OpJumpIfFalse(offset) => {
                 write!(f, "@jump-if-false({offset})")
@@ -125,7 +125,7 @@ impl Display for OpCode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone)]
 pub enum OpType {
     Simple(OpCode),
     Jumper(OpCode),

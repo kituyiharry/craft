@@ -2,12 +2,12 @@
 use ocaml::Seq;
 use once_cell::unsync::Lazy;
 use std::{
-    array, cell::{Cell, RefCell}, collections::HashMap, ops::{Add, Div, Mul, Sub}, rc::Rc, thread::{sleep, sleep_ms}
+    array, cell::{Cell, RefCell}, collections::HashMap, ops::{Add, Div, Mul, Sub}, rc::Rc
 };
 
-use crate::craftvm::{debug::{self, disas_stack}, value::are_same_type};
-use super::compiler::{compile, CraftParser, TokSeqItem};
-use super::{chunk::CrChunk, common::OpCode, value::CrValue};
+use crate::craftvm::{chunk::CraftChunkIter, debug, value::{are_same_type, CrFunc, CrObjType, CrObjVal}};
+use super::compiler::{compile, CraftParser, FuncType::FScript, TokSeqItem};
+use super::{common::OpCode, value::CrValue};
 
 #[derive(Default, Debug, ocaml::ToValue, ocaml::FromValue)]
 pub enum InterpretResult {
@@ -25,11 +25,16 @@ pub static mut CRALLOCA: Lazy<Vec<CrAllocData>> = Lazy::new(||{
     Vec::with_capacity(64)
 });
 
+type CrFunctData = *const CrFunc;
+pub static mut FNALLOCA: Lazy<Vec<CrFunctData>> = Lazy::new(||{
+    Vec::with_capacity(64)
+});
+
 // drops vector items
 pub(crate) unsafe fn free() {
     CRALLOCA.iter().for_each(|(t, c, p)| {
         log::debug!("freeing at {:?}", *p);
-        drop(Vec::from_raw_parts(*(p) as *mut u8, *t, *c));
+        drop(Vec::from_raw_parts(*p as *mut u8, *t, *c));
     });
     CRALLOCA.truncate(0);
 }
@@ -39,21 +44,43 @@ pub(crate) unsafe fn alloca(bytes: Vec<u8>) -> (usize, *const u8) {
     let cap = bytes.capacity();
     let ptr = Vec::leak(bytes).as_ptr();
     CRALLOCA.push((tot, cap, ptr));
-    (tot, ptr)
+    (CRALLOCA.len(), ptr)
 }
 
-pub struct CrVm<const STACKSIZE: usize> {
-    source: Rc<RefCell<CrChunk>>,
-    vstack: [Cell<CrValue>; STACKSIZE],
+pub(crate) unsafe fn falloca(func: Box<CrFunc>) -> (usize, *mut CrFunc) {
+    let ptr = Box::leak(func);
+    let idx = FNALLOCA.len();
+    FNALLOCA.push(ptr);
+    (idx, ptr)
+}
+
+const MAX_FRAMES: usize = 64;
+
+// A CallFrame represents a single ongoing function call.
+#[derive(Debug, Clone)]
+pub struct CrCallFrame<'a> {
+    pub fncobj: *mut CrFunc,
+    pub instrp: *mut CraftChunkIter<'a>,
+
+    pub stkidx: usize,
+    pub slots : Vec<Cell<CrValue>>, // local vars will be in these slots
+}
+
+// objects are tracked in alloca and free
+pub struct CrVm<'a, const STACKSIZE: usize> {
+    // source: Rc<RefCell<CrFunc>>,
+    // The value stack in the VM works on the observation that 
+    // local variables and temporaries behave in a last-in first-out fashion.
+    vstack: [Rc<Cell<CrValue>>; STACKSIZE],
     stkptr: *mut CrValue, // stack pointer
     stkidx: usize,
     global: HashMap<String, Rc<Cell<CrValue>>>,
-    // sentinel for breaking run loop from other methods ;-) - bad design lol
-    iserr : bool,
-    // objects are tracked in alloca and free
+    iserr : bool, // sentinel for breaking run loop from other methods ;-) - bad design lol
+    frames: [Option<RefCell<CrCallFrame<'a>>>; MAX_FRAMES],
+    frmcnt: usize,
 }
 
-impl<const S: usize> Drop for CrVm<S> {
+impl<'a, const S: usize> Drop for CrVm<'a, S> {
     fn drop(&mut self) {
         unsafe { 
             free(); 
@@ -62,19 +89,22 @@ impl<const S: usize> Drop for CrVm<S> {
 }
 
 #[allow(dead_code)]
-impl<const STACK: usize> CrVm<STACK> {
+impl<'a, const STACK: usize> CrVm<'a, STACK> {
     pub fn new() -> Self {
         log::debug!("Creating new VM");
-        let vstck = array::from_fn::<_, STACK, _>(|_idx| Cell::new(CrValue::CrNil));
+        let vstck = array::from_fn::<_, STACK, _>(|_idx| Rc::new(Cell::new(CrValue::CrNil)));
+        let frmes = array::from_fn::<_, MAX_FRAMES, _>(|_idx| None);
         let stcki = 0;
         let stckp = vstck[stcki].as_ptr();
         Self {
-            source: Rc::new(RefCell::new(CrChunk::new())),
+            //source: Rc::new(RefCell::new(CrFunc::default())),
             vstack: vstck,
             stkptr: stckp,
             stkidx: stcki,
             global: HashMap::new(),
             iserr:  false,
+            frames: frmes,
+            frmcnt: 0,
         }
     }
 
@@ -134,10 +164,10 @@ impl<const STACK: usize> CrVm<STACK> {
         println!("============= stack ================");
         let mut pos = self.stkidx;
         while pos > 0 {
-            println!("  {pos} ==> {:?}", self.vstack[pos]);
+            println!("  {pos} ==> {:?}", self.vstack[pos].clone());
             pos-=1;
         }
-        println!("  {pos} ==> {:?}", self.vstack[pos]);
+        println!("  {pos} ==> {:?}", self.vstack[pos].clone());
         println!("============= stack ================");
     }
 
@@ -150,53 +180,144 @@ impl<const STACK: usize> CrVm<STACK> {
     }
 
     pub fn dump_src(&self) {
-        println!("============= source =============");
-        let bsrc   = self.source.borrow();
-        debug::disas(&self.source.clone().borrow(), bsrc.into_iter());
-        println!("============= source =============");
+        // This one drops it
+        unsafe { 
+            let bsrc = (self.frames[self.frmcnt-1].as_ref().unwrap().borrow_mut()).fncobj;
+
+            let name = &(*bsrc).fname;
+            if name.is_empty() {
+                println!("============= script ===============");
+            } else {
+                println!("============= {name} ===============");
+            }
+
+            let cchnk = (*bsrc).chunk.clone();
+            debug::disas(&cchnk, cchnk.into_iter());
+            println!("====================================");
+        };
     }
 
-    pub fn warm(&mut self, chunk: CrChunk) {
+    pub fn warm(&mut self, mut chunk: CrFunc) {
+        chunk.fname = "script".into();
         self.reset_stack();
-        self.source.replace(chunk);
+
+        let (_idx, gbox) = unsafe { falloca(Box::new(chunk)) };
+
+        let v = CrObjVal {
+            objtype: CrObjType::CrFunc,
+            objlen:  0, // Not used?/
+            objval:  gbox,
+            next:    Some(_idx),
+        };
+
+        self.push(CrValue::CrObj(v));
+
+        let iter = unsafe { (*gbox).chunk.into_iter() };
+        let frame = CrCallFrame {
+            fncobj: gbox,
+            instrp: Box::leak(Box::new(iter)),
+            stkidx: 0,
+            slots : Vec::with_capacity(16),
+        };
+
+        self.frames[self.frmcnt].replace(frame.into());
+        self.frmcnt += 1;
+
+    }
+
+    // Convenience function so all you have to do is manipulate the framecount
+
+    #[inline]
+    pub fn curframe(&self) -> *mut CrFunc {
+        self.frame(self.frmcnt - 1)
+    }
+
+    #[inline]
+    pub fn curinstrptr(&self) -> *mut CraftChunkIter<'a> {
+        self.instrptr(self.frmcnt - 1)
+    }
+
+    #[inline]
+    pub fn frame(&self, idx: usize) -> *mut CrFunc {
+        unsafe {
+            (self.frames[idx]).clone().unwrap_unchecked().borrow().fncobj
+        }
+    }
+
+    #[inline]
+    pub fn instrptr(&self, idx: usize) -> *mut CraftChunkIter<'a> {
+        unsafe {
+            (self.frames[idx]).as_ref().unwrap_unchecked().borrow_mut().instrp
+        }
+    }
+
+
+    #[inline]
+    pub fn pushslot(&self, value: CrValue) {
+        unsafe {
+            (self.frames.last().unwrap_unchecked()).as_ref().unwrap_unchecked().borrow_mut().slots.push(value.into());
+        }
+    }
+
+    #[inline]
+    pub fn popslot(&self, idx: usize) -> *mut CrValue {
+        unsafe {
+            let f = (self.frames.last().unwrap_unchecked()).as_ref().unwrap_unchecked().borrow_mut(); 
+            log::debug!("getting slot {idx} of {}", f.slots.len());
+            f.slots[idx].as_ptr()
+        }
+    }
+
+    #[inline]
+    pub fn setslot(&self, idx: usize, value: CrValue) {
+        unsafe {
+            let mut f = (self.frames.last().unwrap_unchecked()).as_ref().unwrap_unchecked().borrow_mut(); 
+            let l = f.slots.len();
+            if idx >= l {
+                log::debug!("pushing slot {idx} of {l} to {value}");
+                f.slots.push(value.into());
+            } else {
+                log::debug!("modifying slot {idx} of {l} to {value}");
+                f.slots[idx].set(value);
+            }
+        }
     }
 
     pub fn run(&mut self) -> InterpretResult {
         log::debug!("== vm exec ==");
-        self.dump_src();
+        //self.dump_src();
 
-        // To avoid being told we are "modifying something immutable"
-        let srclne = self.source.clone();
-        let bsrc   = srclne.borrow_mut();
-        let mut instrptr = bsrc.into_iter();
-
+        // At the beginning of each function call, the VM records the location of 
+        // the first slot where that function’s own locals begin. 
+        // The instructions for working with local variables access them by 
+        // a slot index relative to that, instead of relative to the bottom of the stack initially
+        //
+        //The VM needs to return back to the chunk where the function was called 
+        //from and resume execution at the instruction immediately after the call. 
+        //Thus, for each function call, we need to track where we jump back to when the call completes.
+        //This is called a return address because it’s the address of the instruction that the VM returns to after the call
+        //
+        // TODO
 
         // start vm thread
+        unsafe {
         loop {
-            if let Some((_idx, _line, op)) = instrptr.next() {
+            if let Some((_idx, _line, op)) = (*self.curinstrptr()).next() {
                 //self.dump_stack();
                 //println!("next instr is {op}");
                 if log::log_enabled!(log::Level::Debug) {
-                    super::debug::disas_instr(&bsrc, _idx, _line, op);
+                    super::debug::disas_instr(&(*(self.curframe())).chunk, _idx, _line, op);
                 }
+                //self.dump_stack();
                 // TODO: in the book, they peek before executing
                 // In the book some instructions are 'merged' as well so we have to 
                 // look ahead in this version as well. Its best to just implement all instructions 
                 // directly for simplicity for future reference i.e for >=, <= .. etc
                 match op {
                     OpCode::OpNop => log::debug!("Nop instruction"),
-                    OpCode::OpPop => { let v = self.pop();
-                        unsafe { log::debug!("popped {}", *v); } },
-                    OpCode::OpReturn => {
-                                        //if self.stkidx != 0 {
-                                            //let val = self.pop();
-                                            //unsafe { println!("{:?}", *val) };
-                                        //}
-                                        log::debug!("return!");
-                                        return InterpretResult::InterpretOK;
-                                    }
+                    OpCode::OpPop => { self.pop(); },
+                    OpCode::OpReturn => return InterpretResult::InterpretOK,
                     OpCode::OpNegate => {
-                                        unsafe {
                                             let pop = self.pop();
                                             if matches!(*pop, CrValue::CrNumber(_)) {
                                                 log::debug!("negate: {}!",*pop);
@@ -207,10 +328,8 @@ impl<const STACK: usize> CrVm<STACK> {
                                                 self.dump_stack();
                                                 return InterpretResult::InterpretCompileError;
                                             }
-                                        }
                                     }
                     OpCode::OpNot  => {
-                                        unsafe {
                                             let pop = self.pop();
                                             if matches!(*pop, CrValue::CrBool(_) | CrValue::CrNil) {
                                                 log::debug!("invert: {}!",*pop);
@@ -221,20 +340,18 @@ impl<const STACK: usize> CrVm<STACK> {
                                                 self.dump_stack();
                                                 return InterpretResult::InterpretCompileError;
                                             }
-                                        }
                                     },
                     OpCode::OpSub  => self.binop(CrValue::sub),
                     OpCode::OpAdd  => self.binop(CrValue::add),
                     OpCode::OpMult => self.binop(CrValue::mul),
                     OpCode::OpDiv  => self.binop(CrValue::div),
-                    OpCode::OpCnst(idx) => self.push(*bsrc.fetch_const(*idx)),
+                    OpCode::OpCnst(idx) => self.push(*(*self.curframe()).chunk.fetch_const(*idx)),
                     OpCode::OpTrue  => self.push(CrValue::CrBool(true)),
                     OpCode::OpFalse => self.push(CrValue::CrBool(false)),
                     OpCode::OpNil   => self.push(CrValue::CrNil),
                     OpCode::OpEqual => {
                                         let a = self.pop();
                                         let b = self.pop();
-                                        unsafe  {
                                             if are_same_type(*a, *b) {
                                                 log::debug!("comparing {:?} == {:?}", *a, *b);
                                                 self.push(CrValue::CrBool(*a == *b));
@@ -248,7 +365,6 @@ impl<const STACK: usize> CrVm<STACK> {
                                                 self.dump_stack();
                                                 break InterpretResult::InterpretCompileError;
                                             }
-                                        }
                                     },
                     OpCode::OpGreater => {
                                         self.binop(|l, r| {
@@ -262,11 +378,7 @@ impl<const STACK: usize> CrVm<STACK> {
                                             CrValue::CrBool(l < r)
                                         });
                                     },
-                    OpCode::OpPrint => {
-                                        unsafe { 
-                                            println!("{:}", *(self.pop())) 
-                                        }
-                                    }
+                    OpCode::OpPrint => println!("{:}", *(self.pop())),
                     OpCode::OpDefGlob(idx) => {
                         // likely a string object
                         // This code doesn’t check to see if the key is already in the table. 
@@ -275,12 +387,10 @@ impl<const STACK: usize> CrVm<STACK> {
                         // by simply overwriting the value if the key happens to already be in the hash table.
                         
                         // get the var name as string
-                        let identobj = bsrc.fetch_const(*idx).to_string();
-                        unsafe { 
+                        let identobj = (*(self.curframe())).chunk.fetch_const(*idx).to_string();
                             let v = *self.pop();
                             log::debug!("glob defined: {identobj} => {v}");
                             self.global.insert(identobj, Rc::new(Cell::new(v))); 
-                        }
                     },
                     OpCode::OpGetGlob(g) => {
                         match self.global.get(g) {
@@ -299,10 +409,8 @@ impl<const STACK: usize> CrVm<STACK> {
                         let nv = self.pop();
                         match self.global.entry(s.clone()) {
                             std::collections::hash_map::Entry::Occupied(o) => {
-                                unsafe {
                                     log::debug!("glob set: {s} => {}", *nv);
                                     o.get().set(*nv);
-                                }
                             },
                             std::collections::hash_map::Entry::Vacant(_v) => {
                                 log::error!("tried to set undefined variable {s}");
@@ -313,40 +421,43 @@ impl<const STACK: usize> CrVm<STACK> {
                     },
                     OpCode::OpGetLoc(s, n) => {
                         let b = self.vstack[*n].get();
-                        log::debug!("getting local `{s}` at stack pos: {} is {b}", *n);
+                        //let b = *self.popslot(*n);
+                        log::debug!("getting local of frame {} `{s}` at stack pos: {} is {b}", self.frmcnt, *n);
                         self.push(b);
                     },
                     OpCode::OpSetLoc(s, n) => {
                         let v = self.pop();
-                        unsafe {
-                            log::debug!("setting local `{s}` at stack pos: {} to {}", *n, *v);
-                            self.vstack[*n].set(*v);
-                            self.push(*v);
-                        }
+                        log::debug!("setting local of frame {} `{s}` at stack pos: {} to {}", self.frmcnt, *n, *v);
+                        self.vstack[*n].set(*v);
+                        //self.setslot(*n, *v);
+                        self.push(*v);
                     },
                     // unlike the book i don't pop the condition ??
                     // not sure the effect :-D
                     OpCode::OpJumpIfFalse(o) => {
-                        unsafe {
-                            if let CrValue::CrBool(n) = *self.pop() {
+                            let v = self.pop();
+                            if let CrValue::CrBool(n) = *v {
                                 if !n {
                                     log::debug!("jumping {}", *o);
-                                    instrptr.jump(*o);
+                                    //instrptr.jump(*o);
+                                    (*(self.curinstrptr())).jump(*o);
                                 }
                             } else {
                                 // all other values are falsey!!
                                 log::debug!("jumping {}", *o);
-                                instrptr.jump(*o);
+                                //instrptr.jump(*o);
+                                (*(self.curinstrptr())).jump(*o);
                             }
-                        }
                     },
                     OpCode::OpJump(o) => {
                         log::debug!("raw jumping {}", *o);
-                        instrptr.jump(*o);
+                        //instrptr.jump(*o);
+                        (*(self.curinstrptr())).jump(*o);
                     },
                     OpCode::OpLoop(loc) => {
                         log::debug!("to location {}", *loc);
-                        instrptr.location(*loc);
+                        //instrptr.goto(*loc);
+                        (*(self.curinstrptr())).goto(*loc);
                     },
                 }
                 if self.iserr {
@@ -357,10 +468,11 @@ impl<const STACK: usize> CrVm<STACK> {
                 break InterpretResult::InterpretOK;
             };
         }
+        }
     }
 }
 
-impl<const STACK: usize> Default for CrVm<STACK> {
+impl<'a, const STACK: usize> Default for CrVm<'a, STACK> {
     fn default() -> Self {
         Self::new()
     }
@@ -371,14 +483,16 @@ pub fn interpret<'a, const S: usize>(
     ts: Seq<TokSeqItem<'a>>,
 ) -> InterpretResult {
     // maybe i'll chain the Seqs ??
-    let chunk: RefCell<CrChunk> = RefCell::new(CrChunk::new());
-    let mut parser: CraftParser = CraftParser::new(ts, chunk);
+    let chunk: RefCell<CrFunc> = RefCell::new(CrFunc::default());  // main function
+    let mut parser: CraftParser = CraftParser::new(ts, chunk, FScript);
     if !compile(&mut parser) {
         log::error!("Compilation Error");
         InterpretResult::InterpretCompileError
     } else {
+        let chnk = parser.finish();
         log::info!("executing");
-        vm.warm(parser.chnk.into_inner());
+        vm.warm(chnk);
+        //vm.warm(parser.chnk.into_inner().chunk);
         vm.run()
     }
 }

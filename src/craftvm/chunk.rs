@@ -1,4 +1,7 @@
-use chrono::offset;
+use std::fmt::Debug;
+use std::hash::Hash;
+
+use crate::craftvm::value::CrFunc;
 
 use super::common::{OpCode, OpType};
 use super::value::{ConstPool, CrValue};
@@ -6,10 +9,38 @@ use super::value::{ConstPool, CrValue};
 // offset, line number and opcode
 pub type Offset<'a> = (usize, usize, &'a OpCode);
 
+#[derive(Clone)]
 pub struct CrChunk {
     instr: Vec<OpType>,
     cnsts: ConstPool,
+    funcs: Vec<CrFunc>,
     lines: Vec<usize>, // HINT: RLE encode this for better memory use
+}
+
+impl Hash for CrChunk  {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.instr.hash(state);
+        self.cnsts.hash(state);
+        self.lines.hash(state);
+    }
+}
+
+impl Debug for CrChunk  {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let chnk = self.into_iter();
+        for (idx, line, ele) in chnk {
+            match ele {
+                OpCode::OpCnst(cidx) => {
+                    let v = self.fetch_const(*cidx);
+                    writeln!(f, "\t  {idx:04}  | {line:03} | {ele} '{v}'")?
+                }
+                _ => {
+                    writeln!(f, "\t  {idx:04}  | {line:03} | {ele}")?
+                }
+            }
+        }
+        write!(f, "        ")
+    }
 }
 
 impl CrChunk {
@@ -17,6 +48,7 @@ impl CrChunk {
         Self {
             instr: vec![],
             lines: vec![],
+            funcs: vec![],
             cnsts: ConstPool::new(),
         }
     }
@@ -44,6 +76,10 @@ impl CrChunk {
         idx
     }
 
+    pub fn fetch_func(&self, idx: usize) -> &CrFunc {
+        unsafe { self.funcs.get_unchecked(idx) }
+    }
+
     pub fn fetch_const(&self, idx: usize) -> &CrValue {
         self.cnsts.get(idx)
     }
@@ -60,6 +96,7 @@ impl Default for CrChunk {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CraftChunkIter<'a> {
     pub source: &'a CrChunk,
     pub offset: usize,
@@ -71,8 +108,8 @@ impl<'a> CraftChunkIter<'a> {
         self.offset += offset
     }
 
-    pub fn location(&mut self, idx: usize) {
-        self.offset = idx
+    pub fn goto(&mut self, locidx: usize) {
+        self.offset = locidx
     }
 
 }

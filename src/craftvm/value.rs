@@ -1,20 +1,23 @@
 #![allow(static_mut_refs)]
-use std::{collections::HashMap, fmt::{Debug, Display}, hash::Hash, ops::{Add, Div, Mul, Neg, Not, Sub}};
-use crate::craftvm::vm;
+use core::f64;
+use std::{any::Any, collections::{hash_map::Entry, HashMap}, fmt::{Debug, Display}, hash::{Hash, Hasher}, ops::{Add, Div, Mul, Neg, Not, Sub}};
+
+use crate::craftvm::{chunk::CrChunk, vm::{self, falloca}};
 
 static MIN_VEC_CAP: usize = 8;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub enum CrObjType {
-    CrBorStr,
+    CrStr,
+    CrFunc,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct CrObjVal {
     pub objtype: CrObjType,
-    pub objval:  *const u8,
+    pub objval:  *const dyn Any, // :-(
     pub objlen:  usize,
     pub next:    Option<usize>
 }
@@ -23,7 +26,7 @@ impl Hash for CrObjVal {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         let as_str = unsafe {
             std::str::from_utf8_unchecked(
-                std::slice::from_raw_parts(self.objval, self.objlen)
+                std::slice::from_raw_parts(self.objval as *const u8, self.objlen)
             )
         };
         as_str.hash(state)
@@ -32,19 +35,29 @@ impl Hash for CrObjVal {
 
 impl Debug for CrObjVal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let as_str = unsafe {
-            std::str::from_utf8_unchecked(
-                std::slice::from_raw_parts(self.objval, self.objlen)
-            )
-        };
-        write!(f, "{:?}{{{}@{:?}}}", self.objtype, as_str, self.objval)
+        match self.objtype {
+            CrObjType::CrStr => {
+                let as_str = unsafe {
+                    std::str::from_utf8_unchecked(
+                        std::slice::from_raw_parts(self.objval as *const u8, self.objlen)
+                    )
+                };
+                write!(f, "{:?}{{{}@{:?}}}", self.objtype, as_str, self.objval)
+            },
+            CrObjType::CrFunc => {
+                let fch = unsafe{ Box::from_raw(self.objval as *mut CrFunc) };
+                let f = Debug::fmt(&fch, f);
+                Box::leak(fch);
+                f
+            },
+        }
     }
 }
 
 impl<'a> From<&'a str> for CrObjVal {
     fn from(value: &'a str) -> Self {
         CrObjVal {
-            objtype: CrObjType::CrBorStr,
+            objtype: CrObjType::CrStr,
             objlen: std::mem::size_of_val(value),
             objval: value.as_ptr(),
             next:   None,
@@ -52,24 +65,39 @@ impl<'a> From<&'a str> for CrObjVal {
     }
 }
 
+impl From<Box<CrFunc>> for CrObjVal {
+    fn from(value: Box<CrFunc>) -> Self {
+        let (_id, ptr) = unsafe {
+            falloca(value)
+        };
+        CrObjVal {
+            objtype: CrObjType::CrFunc,
+            objlen:  0, // Not used?/
+            objval:  ptr,
+            next:    Some(_id),
+        }
+    }
+}
+
 impl PartialEq for CrObjVal {
     fn eq(&self, other: &Self) -> bool {
-        match self.objtype {
-            CrObjType::CrBorStr => {
+        match self.objtype  {
+            CrObjType::CrFunc => {},
+            CrObjType::CrStr => {
                 if self.objlen == other.objlen {
                     unsafe {
                         let lhand: &str = {
-                            std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.objval, self.objlen))
+                            std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.objval as *const u8, self.objlen))
                         };
                         let rhand: &str = {
-                            std::str::from_utf8_unchecked(std::slice::from_raw_parts(other.objval, other.objlen))
+                            std::str::from_utf8_unchecked(std::slice::from_raw_parts(other.objval as *const u8, other.objlen))
                         };
                         return lhand.eq(rhand);
                     }
                 }
-                false
             }
         }
+        false
     }
 }
 
@@ -78,12 +106,12 @@ impl Add for CrObjVal {
 
     fn add(self, rhs: Self) -> Self::Output {
         match self.objtype {
-            CrObjType::CrBorStr => {
+            CrObjType::CrStr => {
                     let lhand: &[u8] = unsafe {
-                        std::slice::from_raw_parts(self.objval, self.objlen)
+                        std::slice::from_raw_parts(self.objval as *const u8, self.objlen)
                     };
                     let rhand: &[u8] = unsafe {
-                        std::slice::from_raw_parts(rhs.objval, rhs.objlen)
+                        std::slice::from_raw_parts(rhs.objval as *const u8, rhs.objlen)
                     };
                     let mut v: Vec<u8> = Vec::with_capacity(MIN_VEC_CAP);
                     v.extend_from_slice(lhand);
@@ -93,13 +121,14 @@ impl Add for CrObjVal {
                     unsafe { 
                         let (_id, ptr) = vm::alloca(v);
                         CrObjVal {
-                            objtype: CrObjType::CrBorStr,
+                            objtype: CrObjType::CrStr,
                             objval:  ptr,
                             objlen:  tot,
                             next:    Some(_id),
                         }
                     }
-            }
+            }, 
+            _ => panic!("cannot add functions!")
         }
     }
 }
@@ -107,9 +136,15 @@ impl Add for CrObjVal {
 impl Display for CrObjVal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.objtype {
-            CrObjType::CrBorStr => {
+            CrObjType::CrFunc => {
+                let b = unsafe {
+                    Box::from_raw(self.objval as *mut CrFunc)
+                };
+                Debug::fmt(&*b, f)
+            },
+            CrObjType::CrStr => {
                 let outword: &str = unsafe { 
-                    std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.objval, self.objlen))
+                    std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.objval as *const u8, self.objlen))
                 };
                 write!(f, "{outword}")
             },
@@ -126,9 +161,53 @@ pub enum CrValue {
     CrObj(CrObjVal),
 }
 
+/// Returns the mantissa, exponent and sign as integers.
+#[inline]
+fn integer_decode(val: f64) -> (u64, i16, i8) {
+    let bits: u64 = f64::to_bits(val);
+    let sign: i8  = if bits >> 63 == 0 { 1 } else { -1 };
+    let mut exponent: i16 = ((bits >> 52) & 0x7ff) as i16;
+    let mantissa = if exponent == 0 {
+        (bits & 0xfffffffffffff) << 1
+    } else {
+        (bits & 0xfffffffffffff) | 0x10000000000000
+    };
+    // Exponent bias + mantissa shift
+    exponent -= 1023 + 52;
+    (mantissa, exponent, sign)
+}
+
+impl Hash for CrValue  {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+        match self {
+            CrValue::CrNumber(n) => {
+                let (m, e, s) = integer_decode(*n);
+                Hasher::write_i8( state, s);
+                Hasher::write_i16(state, e);
+                Hasher::write_u64(state, m);
+            },
+            CrValue::CrBool(b) => {
+                Hasher::write_u8(state, if *b { 1u8 } else { 0u8 });
+            },
+            CrValue::CrNil => { },
+            CrValue::CrObj(cr_obj_val) => {
+                cr_obj_val.hash(state);
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ConstPool {
-    vals: Vec<CrValue>,
-    intr: HashMap<String, usize>, // for string interning
+    pub vals: Vec<CrValue>,
+    pub intr: HashMap<String, usize>, // for string interning
+}
+
+impl Hash for ConstPool {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.vals.hash(state);
+    }
 }
 
 impl ConstPool {
@@ -138,13 +217,13 @@ impl ConstPool {
 
     pub fn intern(&mut self, val: &str) -> usize {
         match self.intr.entry(val.to_owned()) {
-            std::collections::hash_map::Entry::Vacant(v) => {
+            Entry::Vacant(v) => {
                 let idx = self.vals.len();
                 self.vals.push(CrValue::CrObj(CrObjVal::from(v.key().as_str())));
                 v.insert(idx);
                 idx
             },
-            std::collections::hash_map::Entry::Occupied(o) => {
+            Entry::Occupied(o) => {
                 *o.get()
             }
         }
@@ -287,3 +366,35 @@ impl Default for ConstPool {
         ConstPool::new()
     }
 }
+
+#[derive(Clone)]
+pub struct CrFunc {
+    pub fname: String,
+    pub arity: usize, 
+    pub chunk: CrChunk,
+}
+
+impl Display for CrFunc  {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<fn {}>", self.fname)
+    }
+}
+
+impl Debug for CrFunc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "@func:{} - {} ops {{", self.fname, self.chunk.instrlen())?;
+        Debug::fmt(&self.chunk, f)?;
+        write!(f, "}}")
+    }
+}
+
+impl Default for CrFunc  {
+    fn default() -> Self {
+        Self { 
+            arity: 0, 
+            chunk: CrChunk::new(), 
+            fname: "".into() 
+        }
+    }
+}
+
