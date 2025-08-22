@@ -1,6 +1,8 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use chrono::offset;
+
 use crate::craftvm::value::CrFunc;
 
 use super::common::{OpCode, OpType};
@@ -25,21 +27,30 @@ impl Hash for CrChunk  {
     }
 }
 
+
+// Poor mans debugging for some weird bug with printing derefed pointers :-|
+// impl Drop for CrChunk {
+//     fn drop(&mut self) {
+//         println!("dropping chunk!!");
+//     }
+// }
+
 impl Debug for CrChunk  {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        //self.each(disas_instr_typ);
         let chnk = self.into_iter();
         for (idx, line, ele) in chnk {
             match ele {
                 OpCode::OpCnst(cidx) => {
                     let v = self.fetch_const(*cidx);
-                    writeln!(f, "\t  {idx:04}  | {line:03} | {ele} '{v}'")?
+                    writeln!(f, "  {idx:04}  | {line:03} | {ele} '{v}'")?
                 }
                 _ => {
-                    writeln!(f, "\t  {idx:04}  | {line:03} | {ele}")?
+                    writeln!(f, "  {idx:04}  | {line:03} | {ele}")?
                 }
             }
         }
-        write!(f, "        ")
+        write!(f, "  ")
     }
 }
 
@@ -70,6 +81,12 @@ impl CrChunk {
         self.cnsts.intern(obj)
     }
 
+    pub fn add_func(&mut self, val: CrValue) -> usize {
+        self.cnsts.insert(val)
+        //self.emit_byte(OpType::Simple(OpCode::OpCnst(idx)), lineno);
+        //idx
+    }
+
     pub fn add_const(&mut self, val: CrValue, lineno: usize) -> usize {
         let idx = self.cnsts.insert(val);
         self.emit_byte(OpType::Simple(OpCode::OpCnst(idx)), lineno);
@@ -85,8 +102,16 @@ impl CrChunk {
     }
 
     pub fn end_compiler(&mut self, line: usize) {
+        self.instr.push(OpType::Simple(OpCode::OpNil));
+        self.lines.push(line);
         self.instr.push(OpType::Simple(OpCode::OpReturn));
         self.lines.push(line);
+    }
+
+    pub fn each(&self, f: fn(&Self, usize, usize, &OpType)) {
+        for (i, o) in self.instr.iter().enumerate() {
+            f(self, i, self.lines[i], o);
+        }
     }
 }
 
@@ -100,6 +125,7 @@ impl Default for CrChunk {
 pub struct CraftChunkIter<'a> {
     pub source: &'a CrChunk,
     pub offset: usize,
+    pub lastin: Option<Offset<'a>>,
 }
 
 impl<'a> CraftChunkIter<'a> {
@@ -121,6 +147,7 @@ impl<'a> IntoIterator for &'a CrChunk {
         CraftChunkIter {
             source: self,
             offset: 0,
+            lastin: None,
         }
     }
 }
@@ -136,10 +163,12 @@ impl<'a> Iterator for CraftChunkIter<'a> {
             match self.source.instr[self.offset] {
                 OpType::Simple(ref op) => {
                     self.offset += 1;
+                    self.lastin = Some((i, self.source.lines[i], op));
                     Some((i, self.source.lines[i], op))
                 },
                 OpType::Jumper(ref op) => {
                     self.offset += 1;
+                    self.lastin = Some((i, self.source.lines[i], op));
                     Some((i, self.source.lines[i], op))
                 },
             }

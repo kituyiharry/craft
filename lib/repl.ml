@@ -100,6 +100,7 @@ let repl () =
             else if String.starts_with ~prefix:"!r" bufcont then
                 (
                     Buffer.clear buf;
+                    let _ = Craftvm.reset_stack () in
                     bufstream Seq.empty (lineno) ()
                 )
             else

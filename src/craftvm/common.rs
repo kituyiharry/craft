@@ -41,6 +41,8 @@ pub enum OpCode {
     OpJump(usize),
     // Loops
     OpLoop(usize),
+    // Function calls
+    OpCall(String, usize),
 }
 
 impl Display for OpCode {
@@ -121,6 +123,9 @@ impl Display for OpCode {
             OpCode::OpLoop(location) => {
                 write!(f, "@loop(locidx={location})")
             },
+            OpCode::OpCall(fname, args) => {
+                write!(f, "@call:{fname}(argc={args})")
+            }
         }
     }
 }
@@ -129,6 +134,19 @@ impl Display for OpCode {
 pub enum OpType {
     Simple(OpCode),
     Jumper(OpCode),
+}
+
+impl Display for OpType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OpType::Simple(op_code) => {
+                write!(f, "{op_code}")
+            },
+            OpType::Jumper(op_code) => {
+                write!(f, "{op_code}    --jump-->")
+            },
+        }
+    }
 }
 
 impl Default for OpType {

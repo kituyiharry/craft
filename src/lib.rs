@@ -28,6 +28,13 @@ pub fn compile(t: Seq<(craftvm::scanner::CrTokenType, usize, usize)>) -> Interpr
     r
 }
 
+
+#[ocaml::func]
+#[ocaml::sig("unit -> unit")]
+pub fn reset_stack() -> () {
+    unsafe{ CRVM.reset_stack() };
+}
+
 #[ocaml::func]
 #[ocaml::sig("unit -> unit")]
 pub fn debug_stack() -> () {

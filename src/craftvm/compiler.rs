@@ -8,6 +8,8 @@ use std::{
     array, cell::{RefCell, UnsafeCell}, fmt::Debug
 };
 
+const MAX_FUNC_ARGS: usize = 255usize;
+
 pub type TokSeqItem<'a> = (CrTokenType<'a>, usize, usize);
 
 #[derive(Debug, Default)]
@@ -42,6 +44,8 @@ pub struct CraftParser<'a> {
     pub state:  RefCell<ParseState>,
     pub chnk:   RefCell<CrFunc>,  // Root is main
     pub locs:   RefCell<CraftLocState<'a>>,
+    pub cexp:   CrTokenType<'a>,
+    pub offs:   usize,
 }
 
 #[derive(Debug)]
@@ -170,8 +174,8 @@ static mut PARSERULES: Lazy<[UnsafeCell<CraftParseRule>; 42]> = Lazy::new(|| {
         // CrTokenType::CrLeftParen => 0,
         UnsafeCell::new(CraftParseRule {
             prefix: Some(Box::new(|s, b| CraftParser::grouping(s, b))),
-            infix: None,
-            precdc: Precedence::PrecNone,
+            infix:  Some(Box::new(|s, b| CraftParser::call(s, b))),
+            precdc: Precedence::PrecCall,
         }),
         // CrTokenType::CrRightParen => 1,
         UnsafeCell::new(CraftParseRule {
@@ -455,6 +459,8 @@ impl<'a> CraftParser<'a> {
             previous: RefCell::new(TokenData::default()),
             state:    RefCell::new(ParseState::default()),
             locs:     RefCell::new(l),
+            cexp:     CrTokenType::CrEof,
+            offs:     0,
         }
     }
 
@@ -921,6 +927,34 @@ impl<'a> CraftParser<'a> {
         self.consume(CrTokenType::CrRightParen, "Close grouping")
     }
 
+    fn arg_list(&mut self) -> Result<usize, String>{
+        let mut arg_count = 0usize;
+        while !self.check(CrTokenType::CrRightParen) {
+            self.expression()?;
+            arg_count += 1;
+            if !self.mtch(CrTokenType::CrComma) {
+                break;
+            }
+        }
+        self.consume(CrTokenType::CrRightParen, "argument list")?;
+        log::debug!("found {arg_count} args");
+        Ok(arg_count)
+    }
+
+    fn call(&mut self, _assgnprec: bool) -> ParseRs {
+        log::debug!("accepted call expression, prev: {:?} cur: {:?}", self.previous.borrow().token, self.current.borrow().token);
+        log::debug!("last identifier name could be {:?}", self.cexp);
+        let mut fname = "anon";
+        if let CrTokenType::CrIdentifier(n) = self.cexp {
+            log::info!("setting called function name to {n}");
+            fname = n;
+        }
+        let lino = self.previous.borrow().line;
+        let argc = self.arg_list()?;
+        self.chnk.borrow_mut().chunk.emit_byte(OpType::Simple(common::OpCode::OpCall(fname.into(), argc)), lino);
+        Ok(())
+    }
+
     fn expression(&mut self) -> ParseRs {
         log::debug!("accepted raw expression!");
         self.parse_precedence(&Precedence::PrecAssignment)?;
@@ -1139,12 +1173,15 @@ impl<'a> CraftParser<'a> {
     }
 
     fn define_variable(&mut self, line: usize, cidx: usize) -> ParseRs {
+        log::debug!("def var at idx: {cidx}");
         // defineVariable
         if self.locs.borrow().scope_depth > 0 {
             // markInitialized
             self.mark_init();
+            log::debug!("mark init and exit");
             return Ok(());
         }
+        log::debug!("defining global");
         self.chnk.borrow_mut().chunk.emit_byte(
             OpType::Simple(common::OpCode::OpDefGlob(cidx)), 
             line
@@ -1174,16 +1211,36 @@ impl<'a> CraftParser<'a> {
     fn function(&mut self, _ft: FuncType) -> ParseRs {
         let chunk: RefCell<CrFunc> = RefCell::new(CrFunc::default());  // main function
         let line = self.previous.borrow().line;
-        
+ 
         // TODO: behaviour of clone here ??
         log::debug!("created a new parser");
         let mut parser = CraftParser::new(self.tokseq.clone(), chunk, _ft);
+        parser.offs = self.offs + 1;
 
+        if let CrTokenType::CrIdentifier(n) = self.previous.borrow().token {
+            log::info!("setting function {n}");
+            parser.chnk.borrow_mut().fname = n.into();
+        }
+
+        // start where we left
         parser.current  = self.current.borrow().clone().into();
 
         parser.begin_scope();
 
         parser.consume(CrTokenType::CrLeftParen,  "opening function parameters")?;
+        while !parser.check(CrTokenType::CrRightParen) {
+            if parser.chnk.borrow().arity > MAX_FUNC_ARGS {
+                return Err("Max func args exceeded!".into());
+            }
+            let line = parser.current.borrow().line;
+            let varidx = parser.parse_var("expected variable identifier")?;
+            parser.define_variable(line, varidx)?;
+            parser.chnk.borrow_mut().arity += 1;
+            if !parser.mtch(CrTokenType::CrComma) {
+                log::debug!("breaking from non=comma");
+                break;
+            }
+        }
         parser.consume(CrTokenType::CrRightParen, "close function parameters")?;
         parser.consume(CrTokenType::CrLeftBrace,  "function body open")?;
 
@@ -1192,14 +1249,21 @@ impl<'a> CraftParser<'a> {
         log::debug!("function block done, consumed {} tokens", parser.tokcount);
 
 
-        (0..parser.tokcount).for_each(|_| { self.advance(); });
+        // synchronize our state with the enclosed parser
+        (0..=parser.tokcount).for_each(|_| { self.advance(); });
+        if self.mtch(CrTokenType::CrRightBrace) && !self.advance() {
+            self.current.replace(TokenData { 
+                line: 0, col: 0, token: CrTokenType::CrEof 
+            });
+            log::debug!("end of advance");
+        }
 
         let fbody = parser.finish();
+
         self.chnk.borrow_mut().chunk.add_const(
             CrValue::CrObj(CrObjVal::from(Box::new(fbody))),
             line
         );
-
 
         Ok(())
     }
@@ -1222,6 +1286,10 @@ impl<'a> CraftParser<'a> {
 
     fn declaration(&mut self) -> ParseRs {
         log::debug!("accepted declaration!");
+        if self.mtch(CrTokenType::CrSemicolon) && !self.advance() {
+            self.advance();
+           return Ok(()) 
+        }
         if self.mtch(CrTokenType::CrFun) {
             return self.fun_declaration();
         }
@@ -1261,6 +1329,10 @@ impl<'a> CraftParser<'a> {
         if let Some(tok) = self.tokseq.next() {
             match tok {
                 Ok((token, line, col)) => {
+                    // cache last identifier
+                    if matches!(token, CrTokenType::CrIdentifier(_)) {
+                        self.cexp = token.clone()
+                    }
                     self.tokcount += 1;
                     log::debug!("advance popped token {token:?}");
                     self.current.replace(TokenData { line, col, token });
@@ -1324,7 +1396,7 @@ impl<'a> CraftParser<'a> {
 
         if log::log_enabled!(log::Level::Debug) {
             let ch = &self.chnk.borrow().chunk;
-            super::debug::disas(ch, ch.into_iter());
+            super::debug::disas(ch);
         }
 
         state.panic_md = true;

@@ -7,7 +7,7 @@ use crate::craftvm::{chunk::CrChunk, vm::{self, falloca}};
 static MIN_VEC_CAP: usize = 8;
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CrObjType {
     CrStr,
     CrFunc,
@@ -140,7 +140,9 @@ impl Display for CrObjVal {
                 let b = unsafe {
                     Box::from_raw(self.objval as *mut CrFunc)
                 };
-                Debug::fmt(&*b, f)
+                let g = Display::fmt(&*b, f); 
+                Box::leak(b);
+                g
             },
             CrObjType::CrStr => {
                 let outword: &str = unsafe { 
@@ -376,13 +378,14 @@ pub struct CrFunc {
 
 impl Display for CrFunc  {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<fn {}>", self.fname)
+        let numops = self.chunk.instrlen(); 
+        write!(f, "<fn {}(arity={}): {numops} ops>", self.fname, self.arity)
     }
 }
 
 impl Debug for CrFunc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "@func:{} - {} ops {{", self.fname, self.chunk.instrlen())?;
+        writeln!(f, "@func:{} - {{", self.fname)?;
         Debug::fmt(&self.chunk, f)?;
         write!(f, "}}")
     }
@@ -393,7 +396,7 @@ impl Default for CrFunc  {
         Self { 
             arity: 0, 
             chunk: CrChunk::new(), 
-            fname: "".into() 
+            fname: "main".into() 
         }
     }
 }
