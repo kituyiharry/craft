@@ -1078,12 +1078,32 @@ impl<'a> CraftParser<'a> {
         Ok(())
     }
 
+    fn return_statement(&mut self) -> ParseRs { 
+        // in the book they don't allow return from top-level script; i do;
+        let l = self.previous.borrow().line;
+        if self.mtch(CrTokenType::CrSemicolon) {
+            // implicit nil
+            self.end();
+            Ok(())
+        } else {
+            self.expression()?;
+            self.consume(CrTokenType::CrSemicolon, "return statement semi colon")?;
+            self.chnk.borrow_mut().chunk.emit_byte(
+                OpType::Simple(common::OpCode::OpReturn), 
+                l
+            );
+            Ok(())
+        }
+    }
+
     fn statement(&mut self) -> ParseRs {
         log::debug!("accepted statement!");
         if self.mtch(CrTokenType::CrPrint) || self.mtch(CrTokenType::CrPrintln) {
            self.print_statement()
         } else if self.mtch(CrTokenType::CrIf) {
             self.if_statement()
+        } else if self.mtch(CrTokenType::CrReturn) {
+            self.return_statement()
         } else if self.mtch(CrTokenType::CrWhile) {
             self.while_statement()
         } else if self.mtch(CrTokenType::CrFor) {

@@ -345,8 +345,6 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                             // dear God ??
                             self.frmptr = self.stkidx - argc - (self.frmcnt + 1);
 
-                            //println!("set frameptr to {}", self.frmptr);
-
                             self.frames[self.frmcnt].replace(RefCell::new(frame));
                             self.frmcnt += 1;
                             true
@@ -388,11 +386,9 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
         loop {
             if let Some((_idx, _line, op)) = (*self.curinstrptr()).next() {
                 //self.dump_stack();
-                //println!("next instr is {op}");
                 if log::log_enabled!(log::Level::Debug) {
                     super::debug::disas_instr(&(*(self.curframe())).chunk, _idx, _line, op);
                 }
-                //self.dump_stack();
                 // TODO: in the book, they peek before executing
                 // In the book some instructions are 'merged' as well so we have to 
                 // look ahead in this version as well. Its best to just implement all instructions 
@@ -403,17 +399,11 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                     OpCode::OpReturn => { 
                             // likely nil
                             let v = self.pop();
-                            //println!("func return {}", *v);
-                            //let curptr  = self.frmptr;
-                            //let curarg  = self.frmags;
                             // restore enclosing values
                             self.frmptr = self.calleefrm();
                             self.frmags = self.calleeargs();
-                            //println!("restored frameptr to {}", self.frmptr);
                             if self.frmcnt == 1 {
                                 // likely popping the func itself
-                                // let _x = self.pop();
-                                //println!("func return final {}", *x);
                                 (0..self.frmags).for_each(|_| { 
                                     self.pop();
                                 });
@@ -424,7 +414,6 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                             (0..=self.frmags).for_each(|_| { 
                                 let _ = self.pop();
                             });
-                            //self.stkidx += 2;
                             self.push(*v);
                     }
                     OpCode::OpNegate => {
@@ -517,6 +506,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                     },
                     OpCode::OpSetGlob(s) => {
                         let nv = self.pop();
+                        // TODO: maybe use smolstr, kstring or raw_entry
                         match self.global.entry(s.clone()) {
                             std::collections::hash_map::Entry::Occupied(o) => {
                                     log::debug!("glob set: {s} => {}", *nv);
@@ -530,16 +520,12 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                         }
                     },
                     OpCode::OpGetLoc(s, n) => {
-                        //self.dump_stack();
                         let b = self.vstack[self.frmptr + *n + (self.frmcnt - 1)].get();
-                        //println!("getting local of frame {} `{s}`,  stdidx: {} at stack pos: {} is {b}", self.frmcnt-1, self.stkidx, *n);
                         self.push(b);
                     },
                     OpCode::OpSetLoc(s, n) => {
                         let v = self.pop();
-                        //println!("setting local of frame {} `{s}`, stikidx: {} at stack pos: {} to {}", self.frmcnt-1, self.stkidx, *n, *v);
                         self.vstack[self.frmptr + *n + (self.frmcnt - 1)].set(*v);
-                        //self.push(*v);
                     },
                     // unlike the book i don't pop the condition ??
                     // not sure the effect :-D
@@ -548,30 +534,24 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                             if let CrValue::CrBool(n) = *v {
                                 if !n {
                                     log::debug!("jumping {}", *o);
-                                    //instrptr.jump(*o);
                                     (*(self.curinstrptr())).jump(*o);
                                 }
                             } else {
                                 // all other values are falsey!!
                                 log::debug!("jumping {}", *o);
-                                //instrptr.jump(*o);
                                 (*(self.curinstrptr())).jump(*o);
                             }
                     },
                     OpCode::OpJump(o) => {
                         log::debug!("raw jumping {}", *o);
-                        //instrptr.jump(*o);
                         (*(self.curinstrptr())).jump(*o);
                     },
                     OpCode::OpLoop(loc) => {
                         log::debug!("to location {}", *loc);
-                        //instrptr.goto(*loc);
                         (*(self.curinstrptr())).goto(*loc);
                     },
                     OpCode::OpCall(_s, c) => {
                         let v = self.vstack[self.stkidx - c - 1].as_ptr();
-                        //let _ = self.pop();
-                        //println!("call fn: {s} with {c} args is -> {} {:?}", *v, self.stkidx);
                         if !self.call_value(*c, v) {
                             self.print_stacktrace();
                             return InterpretResult::InterpretRuntimeError;
