@@ -179,7 +179,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
     pub fn dump_globals(&self) {
         println!("============= globals ================");
         self.global.iter().for_each(|(k, v)| {
-            println!("\t{k} => {}", v.clone().get())
+            println!("  {k} => {:?}", v.clone().get())
         });
         println!("============= globals ================");
     }
@@ -404,23 +404,27 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                             // likely nil
                             let v = self.pop();
                             //println!("func return {}", *v);
+                            //let curptr  = self.frmptr;
+                            //let curarg  = self.frmags;
+                            // restore enclosing values
                             self.frmptr = self.calleefrm();
                             self.frmags = self.calleeargs();
                             //println!("restored frameptr to {}", self.frmptr);
-                            self.frmcnt -= 1;
-                            if self.frmcnt == 0 {
+                            if self.frmcnt == 1 {
                                 // likely popping the func itself
-                                let _x = self.pop();
+                                // let _x = self.pop();
                                 //println!("func return final {}", *x);
+                                (0..self.frmags).for_each(|_| { 
+                                    self.pop();
+                                });
                                 return InterpretResult::InterpretOK;
                             }
+                            self.frmcnt -= 1;
                             // pop the callstack arguments
-                            (0..self.frmags).for_each(|_| { self.pop(); });
-                            //let _p = self.pop();
-                            //println!("func return another {}", *p);
-                            //pop the function itself
-                            let _p = self.pop();
-                            //println!("func return pop {}", *p);
+                            (0..=self.frmags).for_each(|_| { 
+                                let _ = self.pop();
+                            });
+                            //self.stkidx += 2;
                             self.push(*v);
                     }
                     OpCode::OpNegate => {

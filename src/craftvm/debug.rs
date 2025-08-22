@@ -19,7 +19,7 @@ pub fn disas_instr_typ(ch: &CrChunk, idx: usize, line: usize, ele: &OpType) {
         OpType::Simple(OpCode::OpCnst(cidx)) => {
             let v = ch.fetch_const(*cidx);
             // why does changing this to display drop the value ??
-            println!("  {idx:04}  | {line:03} | {ele} '{v}'");
+            println!("  {idx:04}  | {line:03} | {ele} '{v:?}'");
         }
         _ => {
             println!("  {idx:04}  | {line:03} | {ele}");
