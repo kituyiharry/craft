@@ -11,6 +11,7 @@ static MIN_VEC_CAP: usize = 8;
 pub enum CrObjType {
     CrStr,
     CrFunc,
+    CrNativeFunc,
 }
 
 #[repr(C)]
@@ -49,6 +50,10 @@ impl Debug for CrObjVal {
                 let f = Debug::fmt(&fch, f);
                 Box::leak(fch);
                 f
+            },
+            CrObjType::CrNativeFunc => {
+                let fch =  self.objval as *mut CrNativeProps;
+                unsafe { write!(f, "<native fn:{}>", &(*fch).0) }
             },
         }
     }
@@ -95,7 +100,8 @@ impl PartialEq for CrObjVal {
                         return lhand.eq(rhand);
                     }
                 }
-            }
+            }, 
+            CrObjType::CrNativeFunc => {},
         }
         false
     }
@@ -149,6 +155,9 @@ impl Display for CrObjVal {
                     std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.objval as *const u8, self.objlen))
                 };
                 write!(f, "{outword}")
+            }, 
+            CrObjType::CrNativeFunc => {
+                Debug::fmt(&self, f)
             },
         }
     }
@@ -355,7 +364,7 @@ impl PartialOrd for CrValue  {
 impl Display for CrValue  {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CrValue::CrNumber(n) =>  write!(f, "{n}"),
+            CrValue::CrNumber(n) =>  write!(f, "{n:.6}"),
             CrValue::CrBool(b)   =>  write!(f, "{b}"),
             CrValue::CrNil       =>  write!(f, "nil"),
             CrValue::CrObj(obj)  =>  write!(f, "{obj}", ),
@@ -368,6 +377,12 @@ impl Default for ConstPool {
         ConstPool::new()
     }
 }
+
+
+// we allow for a max of 8 args - we don't have many native functions
+//#[derive(Debug)]
+pub type CrNativeArgs  = [CrValue; 8];
+pub type CrNativeProps = (String, usize, fn(CrNativeArgs) -> CrValue);
 
 #[derive(Clone)]
 pub struct CrFunc {

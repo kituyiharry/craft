@@ -2,10 +2,10 @@
 use ocaml::{Seq};
 use once_cell::unsync::Lazy;
 use std::{
-    array, cell::{Cell, RefCell}, collections::HashMap, ops::{Add, Div, Mul, Sub}, rc::Rc
+    array, cell::{Cell, RefCell, UnsafeCell}, collections::HashMap, ops::{Add, Div, Mul, Sub}, rc::Rc
 };
 
-use crate::craftvm::{chunk::CraftChunkIter, debug, value::{are_same_type, CrFunc, CrObjType, CrObjVal}};
+use crate::craftvm::{chunk::CraftChunkIter, debug, native, value::{are_same_type, CrFunc, CrNativeArgs, CrNativeProps, CrObjType, CrObjVal}};
 use super::compiler::{compile, CraftParser, FuncType::FScript, TokSeqItem};
 use super::{common::OpCode, value::CrValue};
 
@@ -28,6 +28,15 @@ pub static mut CRALLOCA: Lazy<Vec<CrAllocData>> = Lazy::new(||{
 type CrFunctData = *const CrFunc;
 pub static mut FNALLOCA: Lazy<Vec<CrFunctData>> = Lazy::new(||{
     Vec::with_capacity(64)
+});
+
+
+type CrNativeData = CrNativeProps;
+pub static CLOCK: usize = 0;
+pub static mut NTALLOCA: Lazy<[UnsafeCell<CrNativeData>; 1]> = Lazy::new(||{
+    [
+        UnsafeCell::new(("clock".into(), 0, native::clock)),
+    ]
 });
 
 // drops vector items
@@ -156,6 +165,21 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                 );
                 self.iserr = true
             }
+        }
+    }
+
+    // hacky way to add
+    pub fn add_native(&mut self, fidx: usize) { 
+        let g = unsafe { NTALLOCA[fidx].get() };
+        let ov = CrObjVal {
+            objtype: CrObjType::CrNativeFunc,
+            objval:  g,
+            objlen:  0,
+            next:    None,
+        };
+        let v = CrValue::CrObj(ov);
+        unsafe {
+            self.global.insert((*g).0.clone(), Rc::new(Cell::new(v)));
         }
     }
 
@@ -349,6 +373,27 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                             self.frmcnt += 1;
                             true
                         }, 
+                        // we don't push frames with native funcs
+                        CrObjType::CrNativeFunc => {
+                            let b = obj.objval as *mut CrNativeProps;
+                            log::info!("calling {}", &(*b).0);
+                            let ac = (*b).1;
+                            if argc != ac {
+                                log::error!("Expected {ac} arity, got {argc}");
+                                return false;
+                            }
+                            let f = (*b).2;
+                            let arr: CrNativeArgs = array::from_fn(|idx| {
+                                if idx < ac {
+                                    return *self.pop();
+                                }
+                                CrValue::CrNil
+                            });
+                            // pop the native function
+                            let _ = self.pop();
+                            self.push(f(arr));
+                            true
+                        },
                         _ => { 
                             self.dump_stack();
                             log::error!("Call Value must be a function object, found {obj:?}");
@@ -521,9 +566,10 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                     },
                     OpCode::OpGetLoc(s, n) => {
                         let b = self.vstack[self.frmptr + *n + (self.frmcnt - 1)].get();
+                        log::debug!("glob get: {s} => {b}");
                         self.push(b);
                     },
-                    OpCode::OpSetLoc(s, n) => {
+                    OpCode::OpSetLoc(_s, n) => {
                         let v = self.pop();
                         self.vstack[self.frmptr + *n + (self.frmcnt - 1)].set(*v);
                     },

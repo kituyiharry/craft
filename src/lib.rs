@@ -5,9 +5,7 @@ use env_logger::{self, Env};
 use ocaml::Seq;
 use once_cell::unsync::Lazy;
 
-use crate::craftvm::{
-    vm::{interpret, CrVm, InterpretResult},
-};
+use crate::craftvm::vm::{self, interpret, CrVm, InterpretResult};
 
 pub mod craftvm;
 
@@ -19,6 +17,7 @@ static mut CRVM: Lazy<CrVm<512>> = Lazy::new(CrVm::new);
 pub fn compile(t: Seq<(craftvm::scanner::CrTokenType, usize, usize)>) -> InterpretResult {
     // let mut curl = 0;
     INIT.call_once(|| { 
+        unsafe { CRVM.add_native(vm::CLOCK) };
         env_logger::Builder::from_env(
             Env::default().default_filter_or("error")
         ).format_timestamp(None).init();
