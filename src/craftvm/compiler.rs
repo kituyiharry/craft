@@ -988,6 +988,15 @@ impl<'a> CraftParser<'a> {
         }
     }
 
+    fn println_statement(&mut self) -> ParseRs {
+        log::debug!("accepted print statement");
+        self.expression()?;
+        let _ = self.consume_silent(CrTokenType::CrSemicolon, "expected a semicolon");
+        let n = self.previous.borrow().line;
+        self.chnk.borrow_mut().chunk.emit_byte(OpType::Simple(common::OpCode::OpPrintLn), n);
+        Ok(())
+    }
+
     fn print_statement(&mut self) -> ParseRs {
         log::debug!("accepted print statement");
         self.expression()?;
@@ -1098,8 +1107,10 @@ impl<'a> CraftParser<'a> {
 
     fn statement(&mut self) -> ParseRs {
         log::debug!("accepted statement!");
-        if self.mtch(CrTokenType::CrPrint) || self.mtch(CrTokenType::CrPrintln) {
+        if self.mtch(CrTokenType::CrPrint) {
            self.print_statement()
+        } else if self.mtch(CrTokenType::CrPrintln) {
+           self.println_statement()
         } else if self.mtch(CrTokenType::CrIf) {
             self.if_statement()
         } else if self.mtch(CrTokenType::CrReturn) {
@@ -1270,7 +1281,7 @@ impl<'a> CraftParser<'a> {
 
 
         // synchronize our state with the enclosed parser
-        (0..=parser.tokcount).for_each(|_| { self.advance(); });
+        (0..parser.tokcount).for_each(|_| { self.advance(); });
         if self.mtch(CrTokenType::CrRightBrace) && !self.advance() {
             self.current.replace(TokenData { 
                 line: 0, col: 0, token: CrTokenType::CrEof 
@@ -1284,6 +1295,10 @@ impl<'a> CraftParser<'a> {
             CrValue::CrObj(CrObjVal::from(Box::new(fbody))),
             line
         );
+
+        if self.check(CrTokenType::CrSemicolon) {
+            self.advance();
+        }
 
         Ok(())
     }

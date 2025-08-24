@@ -1,4 +1,4 @@
-//@memo(n)
+// @memo(n)
 fun fib(n) {
   if (n < 2) return n;
   return fib(n - 1) + fib(n - 2); 
@@ -35,8 +35,8 @@ var before = clock();
 // printl fib(10);
 // printl fib(15);
 // printl fib(20);
-printl fib(31);
-// printl fib(40);
+// printl fib(30);
+// printl fib(40); - 34 sec
 var after = clock();
 print "elapsed: ";
 printl after - before;

@@ -6,6 +6,13 @@ let clock _env _args =
     Ok (Number (Unix.gettimeofday ()), _env) 
 ;;
 
+let csqrt _env _args = 
+    match _args with
+    | (Number f) :: _r -> Ok (Number (Float.sqrt f), _env)
+    |  _ :: _r -> Ok (Nil, _env)
+    |  _r -> Ok (Nil, _env)
+;;
+
 let env _env _args = 
     let _ = Format.printf "----------------------\n %s \n----------------------\n" (Env.show _env) in
     Ok (Nil, _env) 

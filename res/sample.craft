@@ -86,36 +86,37 @@ count(3);
 var y = sayHi("Dear", "Reader");
 printl y;
 
-fun fib(n) {
-  if (n <= 1) return n;
-  return fib(n - 2) + fib(n - 1);
-}
-
-// f is declared in global scope!!
-for (var i = 0; i < 10; i = i + 1) {
-   print "fib "; print i; print " is "; printl fib(i);
-}
-
- // print "I is "; print f;
-
-// {
-//     if (x > 0) { 
-//        // initializer reuse error is considered an error in resolver!!
-//         var x = x + 2223; 
-//     }
-//     print "x is ";
-//     printl x;
-//     {
-//         x = x - 1;
-//         print "now x is ";
-//         printl x;
-//     };
-// };
+// fun fib(n) {
+//   if (n <= 1) return n;
+//   return fib(n - 2) + fib(n - 1);
+// }
 // 
-// print "and now x is ";
-// printl x;
+// // f is declared in global scope!!
+// for (var i = 0; i < 10; i = i + 1) {
+//    print "fib "; print i; print " is "; printl fib(i);
+// }
 // 
-
+//  // print "I is "; print f;
+// 
+// // {
+// //     if (x > 0) { 
+// //        // initializer reuse error is considered an error in resolver!!
+// //         var x = x + 2223; 
+// //     }
+// //     print "x is ";
+// //     printl x;
+// //     {
+// //         x = x - 1;
+// //         print "now x is ";
+// //         printl x;
+// //     };
+// // };
+// // 
+// // print "and now x is ";
+// // printl x;
+// // 
+// 
+var i = -99;
 fun makeCounter() {
   var i = 0;
   fun count() {
@@ -132,36 +133,39 @@ counter(); // "2".
 
 print "i idx is still "; printl i;
 
-fun factorial(n) {
-    if (n == 0) {
-        return 1;
-    }
-    return n * factorial(n - 1);
-}
+print "sqrt 4 is ";printl sqrt(4);
 
-print "factorial 5 is ";
-printl factorial(5);
-
-var a = "global";
-{
-  var b = "block"; 
-  fun showA() {
-   printl a;
-   fun showB(n) {
-      printl a;
-      printl b;
-      b = n;
-   }
-   showB("next one");
-   var b = "innerBlock";
-   showB("another one");
-   showB("")
-  }
-  showA();
-  var a = "block";
-  showA();
-}
-var monday = true
-if (monday && true) var croissant = "yes";
-
-print croissant;
+// 
+// fun factorial(n) {
+//     if (n == 0) {
+//         return 1;
+//     }
+//     return n * factorial(n - 1);
+// }
+// 
+// print "factorial 5 is ";
+// printl factorial(5);
+// 
+// var a = "global";
+// {
+//   var b = "block"; 
+//   fun showA() {
+//    printl a;
+//    fun showB(n) {
+//       printl a;
+//       printl b;
+//       b = n;
+//    }
+//    showB("next one");
+//    var b = "innerBlock";
+//    showB("another one");
+//    showB("")
+//   }
+//   showA();
+//   var a = "block";
+//   showA();
+// }
+// var monday = true
+// if (monday and true) var croissant = "yes";
+// 
+// print croissant;

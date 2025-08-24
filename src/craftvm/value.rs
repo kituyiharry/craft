@@ -364,7 +364,7 @@ impl PartialOrd for CrValue  {
 impl Display for CrValue  {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CrValue::CrNumber(n) =>  write!(f, "{n:.6}"),
+            CrValue::CrNumber(n) =>  write!(f, "{n:.4}"),
             CrValue::CrBool(b)   =>  write!(f, "{b}"),
             CrValue::CrNil       =>  write!(f, "nil"),
             CrValue::CrObj(obj)  =>  write!(f, "{obj}", ),

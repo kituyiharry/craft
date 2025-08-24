@@ -32,10 +32,15 @@ pub static mut FNALLOCA: Lazy<Vec<CrFunctData>> = Lazy::new(||{
 
 
 type CrNativeData = CrNativeProps;
+// Native functions
 pub static CLOCK: usize = 0;
-pub static mut NTALLOCA: Lazy<[UnsafeCell<CrNativeData>; 1]> = Lazy::new(||{
+pub static RAND:  usize = 1;
+pub static SQRT:  usize = 2;
+pub static mut NTALLOCA: Lazy<[UnsafeCell<CrNativeData>; 3]> = Lazy::new(||{
     [
         UnsafeCell::new(("clock".into(), 0, native::clock)),
+        UnsafeCell::new(("rand".into(),  2, native::rand)),
+        UnsafeCell::new(("sqrt".into(),  1, native::sqrt)),
     ]
 });
 
@@ -82,7 +87,7 @@ pub struct CrVm<'a, const STACKSIZE: usize> {
     vstack: [Rc<Cell<CrValue>>; STACKSIZE],
     stkptr: *mut CrValue, // stack pointer
     stkidx: usize,
-    global: HashMap<String, Rc<Cell<CrValue>>>,
+    global: HashMap<String, Cell<CrValue>>,
     iserr : bool, // sentinel for breaking run loop from other methods ;-) - bad design lol
     frames: [Option<RefCell<CrCallFrame<'a>>>; MAX_FRAMES],
     frmcnt: usize,
@@ -179,7 +184,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
         };
         let v = CrValue::CrObj(ov);
         unsafe {
-            self.global.insert((*g).0.clone(), Rc::new(Cell::new(v)));
+            self.global.insert((*g).0.clone(), Cell::new(v));
         }
     }
 
@@ -522,9 +527,10 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                                             CrValue::CrBool(l < r)
                                         });
                                     },
-                    OpCode::OpPrint => println!("{:}", *self.pop()),
+                    OpCode::OpPrint => print!("{:}", *self.pop()),
+                    OpCode::OpPrintLn => println!("{:}", *self.pop()),
                     OpCode::OpDefGlob(idx) => {
-                        // likely a string object
+                        // likely a string object or func
                         // This code doesn’t check to see if the key is already in the table. 
                         // Lox is pretty lax with global variables and lets you redefine them without error. 
                         // That’s useful in a REPL session, so the VM supports that 
@@ -534,7 +540,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                         let identobj = (*(self.curframe())).chunk.fetch_const(*idx).to_string();
                         let v = *self.pop();
                         log::debug!("glob defined: {identobj} => {v}");
-                        self.global.insert(identobj, Rc::new(Cell::new(v))); 
+                        self.global.insert(identobj, Cell::new(v)); 
                     },
                     OpCode::OpGetGlob(g) => {
                         match self.global.get(g) {

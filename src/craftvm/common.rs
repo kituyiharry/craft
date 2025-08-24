@@ -29,6 +29,7 @@ pub enum OpCode {
     OpLess,
     // vars 
     OpPrint,
+    OpPrintLn,
     // Global vars
     OpDefGlob(usize),
     OpGetGlob(String),
@@ -95,6 +96,9 @@ impl Display for OpCode {
             }
             OpCode::OpPrint => {
                 write!(f, "@print")
+            }
+            OpCode::OpPrintLn => {
+                write!(f, "@printl")
             }
             OpCode::OpPop => {
                 write!(f, "<-pop")

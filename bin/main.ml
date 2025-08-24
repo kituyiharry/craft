@@ -51,6 +51,24 @@ let runfile fname =
         (*Format.print_string s*)
 ;;
 
+let runfilevm fname = 
+    let _ = Format.print_newline () in
+    let _ = Format.print_newline () in
+    Craft.Io.fopen fname 
+    |> Craft.Exec.run
+    |> (function {Craft.Scanner.errs;Craft.Scanner.toks} -> 
+        match errs with 
+        | [] -> 
+            (*print_lex_tokens toks;*)
+            let tseq' = Craft.Exec.normalize toks in 
+            Craft.Craftvm.compile (Seq.append tseq' (Seq.return (Craft.Token.EOF, 0, 0)))
+        | errs -> 
+            Craft.Repl.print_lex_errs errs;
+            InterpretCompileError
+    )
+
+;;
+
 let main () = 
     (*let _ = Format.printf "vm: %s\n" (Craft.Craftvm.hello_world (Seq.return (Craft.Token.DOT))) in*)
     if Array.length Sys.argv == 1 then
@@ -60,8 +78,15 @@ let main () =
         let _ = ignore @@ runfile Sys.argv.(1) in
         let _ = Format.print_newline () in
         Format.print_newline ()
+    else if Array.length Sys.argv > 2 then 
+        (if String.equal Sys.argv.(2) "--vm" then
+            let _ = Format.printf "Starting VM" in
+            ignore @@ runfilevm Sys.argv.(1) 
+        else
+            ignore @@ runfile Sys.argv.(1)
+        )
     else
-        Format.printf "usage: craft <script>\n"
+        Format.printf "usage: craft <script> <optional: --vm\n"
 ;;
 
 let () = 

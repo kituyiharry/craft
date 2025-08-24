@@ -17,7 +17,10 @@ static mut CRVM: Lazy<CrVm<512>> = Lazy::new(CrVm::new);
 pub fn compile(t: Seq<(craftvm::scanner::CrTokenType, usize, usize)>) -> InterpretResult {
     // let mut curl = 0;
     INIT.call_once(|| { 
+        // add some 'native' functions
         unsafe { CRVM.add_native(vm::CLOCK) };
+        unsafe { CRVM.add_native(vm::RAND)  };
+        unsafe { CRVM.add_native(vm::SQRT)  };
         env_logger::Builder::from_env(
             Env::default().default_filter_or("error")
         ).format_timestamp(None).init();
