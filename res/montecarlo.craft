@@ -13,6 +13,7 @@ var numiters = 5;
 
 var c = 0;
 
+// Bug in getting the variables
 fun mcpi(n) { 
     for(var i=0; i<n; i=i+1) { 
         var p1_x = n; // rand(minp, maxp);  //  
