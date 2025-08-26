@@ -1,31 +1,14 @@
-fun euclidean(x,i,y,j) { 
-    var k  = i-x;
-    var k2 = k*k;
-    var l  = j-y;
-    var l2 = l*l;
-    var r  = sqrt(k2+l2);
-    return r;
-};
-
-var minp = 0; 
-var maxp = 1;
-var numiters = 9;
-
-// Bug in getting the variables
-fun mcpi() { 
-    var p1_x = rand(minp, maxp);  //  10; // 
-    var p2_x = rand(minp, maxp);  //  40; // 
-    var p1_y = rand(minp, maxp);  //  20; // 
-    var p2_y = rand(minp, maxp);  //  60; // 
-    var h    = euclidean(p1_x, p2_x, p1_y, p2_y);
-    printl h;
-    return (h <= 1);
-};
-
-
 var hc = 0;
-for (var i = 0; i < numiters; i = i +1) {
-    if (mcpi()) {
+for (var b = 0; b < 10; b = b + 1) {
+    var i  = rand(0, 2); 
+    var j  = rand(0, 2);
+    var k  = rand(0, 2);
+    var l  = rand(0, 2);
+    var dx = ((k-i)*(k-i));
+    var dy = ((l-j)*(l-j));
+    var e = sqrt(dy + dx);
+    printl e;
+    if (e <= 1) { 
         hc = hc + 1;
     }
 }

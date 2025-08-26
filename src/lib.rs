@@ -18,9 +18,9 @@ pub fn compile(t: Seq<(craftvm::scanner::CrTokenType, usize, usize)>) -> Interpr
     // let mut curl = 0;
     INIT.call_once(|| { 
         // add some 'native' functions
-        unsafe { CRVM.add_native(vm::CLOCK) };
-        unsafe { CRVM.add_native(vm::RAND)  };
-        unsafe { CRVM.add_native(vm::SQRT)  };
+        unsafe { CRVM.add_native_wrap(vm::CLOCK) };
+        unsafe { CRVM.add_native_wrap(vm::RAND)  };
+        unsafe { CRVM.add_native_wrap(vm::SQRT)  };
         env_logger::Builder::from_env(
             Env::default().default_filter_or("error")
         ).format_timestamp(None).init();

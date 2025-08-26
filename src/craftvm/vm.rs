@@ -5,7 +5,7 @@ use std::{
     array, cell::{Cell, RefCell, UnsafeCell}, collections::HashMap, ops::{Add, Div, Mul, Sub}, rc::Rc
 };
 
-use crate::craftvm::{chunk::CraftChunkIter, debug, native, value::{are_same_type, CrFunc, CrNativeArgs, CrNativeProps, CrObjType, CrObjVal}};
+use crate::craftvm::{chunk::{CrChunk, CraftChunkIter}, debug, native, value::{are_same_type, CrFunc, CrNativeArgs, CrNativeProps, CrObjType, CrObjVal}};
 use super::compiler::{compile, CraftParser, FuncType::FScript, TokSeqItem};
 use super::{common::OpCode, value::CrValue};
 
@@ -38,9 +38,9 @@ pub static RAND:  usize = 1;
 pub static SQRT:  usize = 2;
 pub static mut NTALLOCA: Lazy<[UnsafeCell<CrNativeData>; 3]> = Lazy::new(||{
     [
-        UnsafeCell::new(("clock".into(), 0, native::clock)),
-        UnsafeCell::new(("rand".into(),  2, native::rand)),
-        UnsafeCell::new(("sqrt".into(),  1, native::sqrt)),
+        UnsafeCell::new(("clock__wrap".into(), 0, native::clock)),
+        UnsafeCell::new(("rand__wrap".into(),  2, native::rand)),
+        UnsafeCell::new(("sqrt__wrap".into(),  1, native::sqrt)),
     ]
 });
 
@@ -173,8 +173,50 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
         }
     }
 
+    // hacky way to add native functions - creates as pseudo-function which maintains the vms
+    // calculation for function call frames - not sure if the same as book but added due to bug!
+    pub fn add_native_wrap(&mut self, fidx: usize) { 
+        let (n,a) = self.add_native(fidx);
+        let mut ch = CrChunk::new();
+        let lineno = 0;
+        let mut l = 'a';
+        ch.emit_byte(super::common::OpType::Simple(
+            OpCode::OpGetGlob(n.clone())
+        ), 0);
+        (0..a).for_each(|idx|{ 
+            ch.emit_byte(super::common::OpType::Simple(
+                OpCode::OpGetLoc(l.into(), idx+1)
+            ), lineno);
+            l = ((l as u8) + 1) as char;
+        });
+        ch.emit_byte(super::common::OpType::Simple(
+            OpCode::OpCall(n.clone(), a)
+        ), lineno);
+
+        ch.emit_byte(super::common::OpType::Simple(OpCode::OpReturn), lineno);
+        ch.emit_byte(super::common::OpType::Simple(OpCode::OpNil), lineno);
+        ch.emit_byte(super::common::OpType::Simple(OpCode::OpReturn), lineno);
+
+        let func = CrFunc {
+            fname: n.clone(),
+            arity: a,
+            chunk: ch,
+        };
+        let (z, r) = unsafe {
+            falloca(func.into())
+        };
+        let ov = CrObjVal {
+            objtype: CrObjType::CrFunc,
+            objval:  r,
+            objlen:  0,
+            next:    Some(z),
+        };
+        let v = CrValue::CrObj(ov);
+        self.global.insert(n.replace("__wrap", "").trim_end().into(), Cell::new(v));
+    }
+
     // hacky way to add
-    pub fn add_native(&mut self, fidx: usize) { 
+    pub fn add_native(&mut self, fidx: usize) -> (String, usize) { 
         let g = unsafe { NTALLOCA[fidx].get() };
         let ov = CrObjVal {
             objtype: CrObjType::CrNativeFunc,
@@ -184,7 +226,10 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
         };
         let v = CrValue::CrObj(ov);
         unsafe {
-            self.global.insert((*g).0.clone(), Cell::new(v));
+            let n =(*g).0.clone();
+            let a = (*g).1 ;
+            self.global.insert(n.clone(), Cell::new(v));
+            (n, a)
         }
     }
 
@@ -196,7 +241,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
     // make sure to restore locally popped values
     pub fn dump_stack(&self) {
         println!("============= stack ================");
-        let mut pos = self.stkidx + 2;
+        let mut pos = self.stkidx;
         while pos > 0 {
             println!("  {pos} ==> {:}", self.vstack[pos].clone().get());
             pos-=1;
