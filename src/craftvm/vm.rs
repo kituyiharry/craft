@@ -196,12 +196,12 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
     // make sure to restore locally popped values
     pub fn dump_stack(&self) {
         println!("============= stack ================");
-        let mut pos = self.stkidx;
+        let mut pos = self.stkidx + 2;
         while pos > 0 {
-            println!("  {pos} ==> {:?}", self.vstack[pos].clone());
+            println!("  {pos} ==> {:}", self.vstack[pos].clone().get());
             pos-=1;
         }
-        println!("  {pos} ==> {:?}", self.vstack[pos].clone());
+        println!("  {pos} ==> {:}", self.vstack[pos].clone().get());
         println!("============= stack ================");
     }
 
@@ -257,7 +257,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
         };
         self.frames[self.frmcnt].replace(frame.into());
         self.frmcnt = 1;
-        self.frmptr = 1;
+        self.frmptr = 0;
     }
 
     // Convenience function so all you have to do is manipulate the framecount
@@ -472,9 +472,9 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                     OpCode::OpReturn => { 
                             // likely nil
                             let v = *self.pop();
-                            self.stkidx = self.frmptr;
 
-                            log::debug!("res: {v}, setting stkidx to {}", self.frmptr);
+                            self.stkidx = self.frmptr;
+                            log::info!("res: {v}, setting stkidx to {}", self.frmptr);
 
                             self.frmptr = self.calleefrm();
                             self.frmags = self.calleeargs();
@@ -564,7 +564,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                     OpCode::OpGetGlob(g) => {
                         match self.global.get(g) {
                             Some(v) => {
-                                log::debug!("glob fetched: {g}");
+                                log::info!("glob fetched: {g} => {}", v.get());
                                 self.push(v.clone().get());
                             },
                             None    => {
@@ -579,7 +579,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                         // TODO: maybe use smolstr, kstring or raw_entry
                         match self.global.entry(s.clone()) {
                             std::collections::hash_map::Entry::Occupied(o) => {
-                                    log::debug!("glob set: {s} => {}", *nv);
+                                    log::info!("glob set: {s} => {}", *nv);
                                     o.get().set(*nv);
                             },
                             std::collections::hash_map::Entry::Vacant(_v) => {
@@ -628,6 +628,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                     },
                 }
                 if self.iserr {
+                    log::error!("Error!!");
                     self.dump_stack();
                     break InterpretResult::InterpretCompileError; 
                 }
