@@ -1222,7 +1222,6 @@ impl<'a> CraftParser<'a> {
 
     fn var_declaration(&mut self) -> ParseRs {
         let global = self.parse_var("Expect var decl")?;
-
         let line   = self.previous.borrow().line;
         if self.mtch(CrTokenType::CrEqual) {
             let _ = self.expression();
@@ -1279,6 +1278,7 @@ impl<'a> CraftParser<'a> {
         parser.block()?;
         log::debug!("function block done, consumed {} tokens", parser.tokcount);
 
+        parser.end_scope();
 
         // synchronize our state with the enclosed parser
         (0..parser.tokcount).for_each(|_| { self.advance(); });

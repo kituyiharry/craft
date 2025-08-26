@@ -1,0 +1,37 @@
+fun euclidean(x,i,y,j) { 
+    var k  = i-x;
+    var k2 = k*k;
+    var l  = j-y;
+    var l2 = l*l;
+    var r  = sqrt(k2+l2);
+    return r;
+};
+
+var minp = 0; 
+var maxp = 1;
+var numiters = 5;
+
+var c = 0;
+
+fun mcpi(n) { 
+    for(var i=0; i<n; i=i+1) { 
+        var p1_x = n; // rand(minp, maxp);  //  
+        printl p1_x;
+        var p2_x = 4; // rand(minp, maxp);  //  
+        printl p2_x;
+        var p1_y = n; // rand(minp, maxp);  //  
+        printl p1_y;
+        var p2_y = 6; // rand(minp, maxp);  //  
+        printl p2_y;
+        var h    = euclidean(p1_x, p2_x, p1_y, p2_y);
+        printl h;
+        if (h > 1) {
+            printl "hitbox";
+            c = c + 1;
+        }
+    }
+    return c;
+};
+
+printl mcpi(numiters);
+

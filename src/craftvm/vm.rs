@@ -138,7 +138,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
         self.vstack[self.stkidx].set(val);
         self.stkidx += 1;
         self.stkptr = self.vstack[self.stkidx].as_ptr();
-        log::debug!("pushed value {val:?} at {}", self.stkidx-1);
+        log::debug!("pushed value {val} at {}", self.stkidx-1);
     }
 
     #[inline]
@@ -148,7 +148,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
             self.stkidx -= 1;
             self.stkptr = self.vstack[self.stkidx].as_ptr();
             unsafe {
-                log::info!("popped value {:?} at ({})", *(self.stkptr), self.stkidx+1);
+                log::debug!("popped value {:} at ({})", *(self.stkptr), self.stkidx);
             };
         }
         self.stkptr
@@ -257,6 +257,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
         };
         self.frames[self.frmcnt].replace(frame.into());
         self.frmcnt = 1;
+        self.frmptr = 1;
     }
 
     // Convenience function so all you have to do is manipulate the framecount
@@ -372,7 +373,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                             };
                             
                             // dear God ??
-                            self.frmptr = self.stkidx - argc - (self.frmcnt + 1);
+                            self.frmptr = self.stkidx - argc - 1;
 
                             self.frames[self.frmcnt].replace(RefCell::new(frame));
                             self.frmcnt += 1;
@@ -415,6 +416,21 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
         }
     }
 
+    pub fn debugvars(&self) {
+        println!("stkidx {}, frmptr {}, frmcnt {}", 
+            self.stkidx, self.frmptr, self.frmcnt);
+    }
+
+    pub fn linstack(&self) {
+        self.debugvars();
+        let mut pos = self.stkidx - 1;
+        while pos > 0 {
+            print!("|{pos}=>{:} ", self.vstack[pos].clone().get());
+            pos-=1;
+        }
+        println!("|{pos}=>{:} ", self.vstack[pos].clone().get());
+    }
+
     pub fn run(&mut self) -> InterpretResult {
         log::debug!("== vm exec ==");
         self.dump_src();
@@ -446,25 +462,28 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                 match op {
                     OpCode::OpNop => log::debug!("Nop instruction"),
                     OpCode::OpPop => { self.pop(); },
+                    OpCode::OpCall(_s, c) => {
+                        let v = self.vstack[self.stkidx - c - 1].as_ptr();
+                        if !self.call_value(*c, v) {
+                            self.print_stacktrace();
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    }
                     OpCode::OpReturn => { 
                             // likely nil
-                            let v = self.pop();
-                            // restore enclosing values
+                            let v = *self.pop();
+                            self.stkidx = self.frmptr;
+
+                            log::debug!("res: {v}, setting stkidx to {}", self.frmptr);
+
                             self.frmptr = self.calleefrm();
                             self.frmags = self.calleeargs();
+
                             if self.frmcnt == 1 {
-                                // likely popping the func itself
-                                (0..self.frmags).for_each(|_| { 
-                                    self.pop();
-                                });
                                 return InterpretResult::InterpretOK;
                             }
                             self.frmcnt -= 1;
-                            // pop the callstack arguments
-                            (0..=self.frmags).for_each(|_| { 
-                                let _ = self.pop();
-                            });
-                            self.push(*v);
+                            self.push(v);
                     }
                     OpCode::OpNegate => {
                                             let pop = self.pop();
@@ -571,13 +590,18 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                         }
                     },
                     OpCode::OpGetLoc(s, n) => {
-                        let b = self.vstack[self.frmptr + *n + (self.frmcnt - 1)].get();
-                        log::debug!("glob get: {s} => {b}");
+                        //let l = self.frmptr + *n + (self.frmcnt - 1);
+                        let l = self.frmptr + *n;
+                        let b = self.vstack[l].get();
+                        log::debug!("loc get: {s} => {b} at {l}");
                         self.push(b);
                     },
-                    OpCode::OpSetLoc(_s, n) => {
-                        let v = self.pop();
-                        self.vstack[self.frmptr + *n + (self.frmcnt - 1)].set(*v);
+                    OpCode::OpSetLoc(s, n) => {
+                        //let l = self.frmptr + *n + (self.frmcnt - 1);
+                        let l = self.frmptr + *n;
+                        let v = *self.pop();
+                        log::debug!("loc set: {s} => {v} at {l}");
+                        self.vstack[l].set(v);
                     },
                     // unlike the book i don't pop the condition ??
                     // not sure the effect :-D
@@ -602,13 +626,6 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
                         log::debug!("to location {}", *loc);
                         (*(self.curinstrptr())).goto(*loc);
                     },
-                    OpCode::OpCall(_s, c) => {
-                        let v = self.vstack[self.stkidx - c - 1].as_ptr();
-                        if !self.call_value(*c, v) {
-                            self.print_stacktrace();
-                            return InterpretResult::InterpretRuntimeError;
-                        }
-                    }
                 }
                 if self.iserr {
                     self.dump_stack();

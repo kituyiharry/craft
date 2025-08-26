@@ -22,7 +22,7 @@ pub fn rand(v: CrNativeArgs) -> CrValue {
     // NB: the arguments will be in reverse!
     match (v[1], v[0]) {
         (CrValue::CrNumber(min), CrValue::CrNumber(max)) => {
-            let r: f64 = rand::thread_rng().gen_range(min..=max);
+            let r: f64 = rand::rng().random_range(min..=max);
             CrValue::CrNumber(r)
         },
         // if we get wron args - we just return nil and don't fail. bad design but whatever

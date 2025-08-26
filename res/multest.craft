@@ -1,0 +1,26 @@
+var a = 10;
+var b = 11;
+
+fun mul(a, b) { 
+    var g = a * b;
+    return g + 1 + 1;
+};
+
+fun dmul(a) { 
+    var b = mul(a, a);
+    return b;
+};
+ 
+fun tmul(x) { 
+    var n = dmul(x); 
+    return n;
+}
+
+printl tmul(b);
+
+fun add(a, b) { 
+    return a + b;
+};
+
+printl add(add(1,1), add(1,add(1,1)));
+
