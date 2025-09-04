@@ -1,16 +1,5 @@
 var hc = 0;
 for (var b = 0; b < 10; b = b + 1) {
-    var i  = rand(0, 2); 
-    var j  = rand(0, 2);
-    var k  = rand(0, 2);
-    var l  = rand(0, 2);
-    var dx = ((k-i)*(k-i));
-    var dy = ((l-j)*(l-j));
-    var e = sqrt(dy + dx);
-    printl e;
-    if (e <= 1) { 
-        hc = hc + 1;
-    }
 }
 
 printl hc;

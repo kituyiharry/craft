@@ -1,10 +1,6 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use chrono::offset;
-
-use crate::craftvm::value::CrFunc;
-
 use super::common::{OpCode, OpType};
 use super::value::{ConstPool, CrValue};
 
@@ -15,7 +11,6 @@ pub type Offset<'a> = (usize, usize, &'a OpCode);
 pub struct CrChunk {
     instr: Vec<OpType>,
     cnsts: ConstPool,
-    funcs: Vec<CrFunc>,
     lines: Vec<usize>, // HINT: RLE encode this for better memory use
 }
 
@@ -59,7 +54,6 @@ impl CrChunk {
         Self {
             instr: vec![],
             lines: vec![],
-            funcs: vec![],
             cnsts: ConstPool::new(),
         }
     }
@@ -81,20 +75,10 @@ impl CrChunk {
         self.cnsts.intern(obj)
     }
 
-    pub fn add_func(&mut self, val: CrValue) -> usize {
-        self.cnsts.insert(val)
-        //self.emit_byte(OpType::Simple(OpCode::OpCnst(idx)), lineno);
-        //idx
-    }
-
     pub fn add_const(&mut self, val: CrValue, lineno: usize) -> usize {
         let idx = self.cnsts.insert(val);
         self.emit_byte(OpType::Simple(OpCode::OpCnst(idx)), lineno);
         idx
-    }
-
-    pub fn fetch_func(&self, idx: usize) -> &CrFunc {
-        unsafe { self.funcs.get_unchecked(idx) }
     }
 
     pub fn fetch_const(&self, idx: usize) -> &CrValue {
