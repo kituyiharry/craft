@@ -560,10 +560,6 @@ impl<'a> CraftParser<'a> {
         let loci = self.locs.borrow();
         let tot = loci.lcount;
         for i in (MIN_LOC_IDX..=tot).rev() {
-            let l = loci.locals[i as usize].borrow();
-            log::debug!("local: {i} is {l:?}");
-        }
-        for i in (MIN_LOC_IDX..=tot).rev() {
             log::debug!("checking at local: {i} of {tot}");
             let l = loci.locals[i as usize].borrow();
             if l.name.eq(name) {

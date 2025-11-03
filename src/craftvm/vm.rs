@@ -226,7 +226,7 @@ impl<'a, const STACK: usize> CrVm<'a, STACK> {
         };
         let v = CrValue::CrObj(ov);
         unsafe {
-            let n =(*g).0.clone();
+            let n = (*g).0.clone();
             let a = (*g).1 ;
             self.global.insert(n.clone(), Cell::new(v));
             (n, a)

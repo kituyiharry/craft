@@ -32,10 +32,10 @@ var before = clock();
 // printl fib(7);
 // printl fib(8);
 // printl fib(9);
-// printl fib(10);
+printl fib(10);
 // printl fib(15);
 // printl fib(20);
-printl fib(30);
+// printl fib(30);
 // printl fib(40); - 34 sec
 var after = clock();
 print "elapsed: ";
