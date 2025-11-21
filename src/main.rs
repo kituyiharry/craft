@@ -31,11 +31,12 @@ fn main() {
 
     let mut ch: CrChunk = CrChunk::new();
 
-    ch.add_const(CrValue::CrObj(CrObjVal::from("st")), 1);
-    ch.add_const(CrValue::CrObj(CrObjVal::from("ri")), 1);
+    ch.add_const(CrValue::CrObj(CrObjVal::from("Hello")), 1);
+    ch.add_const(CrValue::CrObj(CrObjVal::from(" ")), 1);
     ch.emit_byte(OpType::Simple(OpCode::OpAdd), 1);
-    ch.add_const(CrValue::CrObj(CrObjVal::from("ng")), 1);
+    ch.add_const(CrValue::CrObj(CrObjVal::from("World")), 1);
     ch.emit_byte(OpType::Simple(OpCode::OpAdd), 1);
+    ch.emit_byte(OpType::Simple(OpCode::OpPrintLn), 1);
     ch.emit_byte(OpType::Simple(OpCode::OpReturn), 2);
 
     let fnc = CrFunc { chunk: ch, ..CrFunc::default() };
